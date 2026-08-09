@@ -20,16 +20,23 @@ struct MacroBody {
     lines: Vec<String>,
 }
 
+/// Callback that supplies the text of an `#include`d file by name.
+pub(super) type Loader<'a> = Option<&'a mut dyn FnMut(&str) -> Result<String>>;
+
 /// Preprocessor state (macros/defines kept across modules and includes).
 pub struct Preprocessor<'a> {
-    loader: Option<&'a mut dyn FnMut(&str) -> Result<String>>,
+    loader: Loader<'a>,
     macros: HashMap<String, MacroBody>,
     defines: HashMap<String, String>,
 }
 
 impl<'a> Preprocessor<'a> {
-    pub fn new(loader: Option<&'a mut dyn FnMut(&str) -> Result<String>>) -> Self {
-        Preprocessor { loader, macros: HashMap::new(), defines: HashMap::new() }
+    pub fn new(loader: Loader<'a>) -> Self {
+        Preprocessor {
+            loader,
+            macros: HashMap::new(),
+            defines: HashMap::new(),
+        }
     }
 
     /// Run the preprocessor over the whole source (all modules concatenated).
@@ -43,7 +50,10 @@ impl<'a> Preprocessor<'a> {
         let mut i = 0usize;
         let mut cond: Vec<bool> = Vec::new();
         while i < lines.len() {
-            let span = Span { file: base_file, line: base_line + i + 1 };
+            let span = Span {
+                file: base_file,
+                line: base_line + i + 1,
+            };
             let line = lines[i].trim();
             i += 1;
             if line.is_empty() {
@@ -69,7 +79,13 @@ impl<'a> Preprocessor<'a> {
                 if self.macros.contains_key(&name) {
                     return Err(AsmError::new(span, format!("macro `{name}` redefined")));
                 }
-                self.macros.insert(name, MacroBody { params, lines: body });
+                self.macros.insert(
+                    name,
+                    MacroBody {
+                        params,
+                        lines: body,
+                    },
+                );
                 continue;
             }
 
@@ -102,7 +118,8 @@ impl<'a> Preprocessor<'a> {
                 if let Some(eq) = tmp.find(char::is_whitespace) {
                     let name = &tmp[..eq];
                     if !name.is_empty() {
-                        self.defines.insert(name.to_string(), tmp[eq..].trim().to_string());
+                        self.defines
+                            .insert(name.to_string(), tmp[eq..].trim().to_string());
                     }
                 }
                 continue;
@@ -113,7 +130,10 @@ impl<'a> Preprocessor<'a> {
                 let fname = rest.trim().trim_matches('"').trim();
                 let src = {
                     let loader = self.loader.as_mut().ok_or_else(|| {
-                        AsmError::new(span, format!("`#include \"{fname}\"` but no loader provided"))
+                        AsmError::new(
+                            span,
+                            format!("`#include \"{fname}\"` but no loader provided"),
+                        )
                     })?;
                     loader(fname)?
                 };
@@ -123,20 +143,22 @@ impl<'a> Preprocessor<'a> {
             }
 
             // ---- macro invocation
-            if let Some(first) = line.split_whitespace().next() {
-                if let Some(m) = self.macros.get(first) {
-                    let operand = line[first.len()..].trim();
-                    let args = split_args(operand);
-                    let expanded = expand_macro(m, &args, &span)?;
-                    for s in expanded {
-                        out.push(Stmt { text: s, span });
-                    }
-                    continue;
+            let first = line.split_whitespace().next();
+            if let (Some(first), Some(m)) = (first, first.and_then(|f| self.macros.get(f))) {
+                let operand = line[first.len()..].trim();
+                let args = split_args(operand);
+                let expanded = expand_macro(m, &args, &span)?;
+                for s in expanded {
+                    out.push(Stmt { text: s, span });
                 }
+                continue;
             }
 
             // ---- apply #define replacements and emit
-            out.push(Stmt { text: apply_defines(line, &self.defines), span });
+            out.push(Stmt {
+                text: apply_defines(line, &self.defines),
+                span,
+            });
         }
         Ok(out)
     }
@@ -169,11 +191,10 @@ fn parse_macro_header(line: &str, span: &Span) -> Result<(String, Vec<String>)> 
 /// Expand a macro body: substitute positional params, auto-rename `@N` labels.
 fn expand_macro(m: &MacroBody, args: &[String], span: &Span) -> Result<Vec<String>> {
     if args.len() < m.params.len() {
-        return Err(AsmError::new(*span, format!(
-            "macro expects {} args, got {}",
-            m.params.len(),
-            args.len()
-        )));
+        return Err(AsmError::new(
+            *span,
+            format!("macro expects {} args, got {}", m.params.len(), args.len()),
+        ));
     }
     let mut sub: HashMap<String, String> = HashMap::new();
     for (i, p) in m.params.iter().enumerate() {

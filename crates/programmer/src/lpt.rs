@@ -44,12 +44,18 @@ impl LptTransport {
     }
 
     fn out(&self, off: u16, val: u8) -> Result<()> {
-        let addr = self.base.checked_add(off).ok_or_else(|| Error::Transport("LPT address overflow".into()))?;
+        let addr = self
+            .base
+            .checked_add(off)
+            .ok_or_else(|| Error::Transport("LPT address overflow".into()))?;
         write_port(addr, val)
     }
 
     fn in_status(&self) -> Result<u8> {
-        let addr = self.base.checked_add(STATUS).ok_or_else(|| Error::Transport("LPT address overflow".into()))?;
+        let addr = self
+            .base
+            .checked_add(STATUS)
+            .ok_or_else(|| Error::Transport("LPT address overflow".into()))?;
         read_port(addr)
     }
 }
@@ -69,12 +75,16 @@ pub struct LptBackend {
 impl LptBackend {
     /// Open the default LPT1 port.
     pub fn new() -> Self {
-        LptBackend { transport: LptTransport::default() }
+        LptBackend {
+            transport: LptTransport::default(),
+        }
     }
 
     /// Open a specific parallel-port base address.
     pub fn at(base: u16) -> Self {
-        LptBackend { transport: LptTransport::new(base) }
+        LptBackend {
+            transport: LptTransport::new(base),
+        }
     }
 }
 
@@ -138,7 +148,10 @@ impl Transport for LptTransport {
 }
 
 fn write_port(addr: u16, val: u8) -> Result<()> {
-    #[cfg(all(any(target_os = "linux", target_os = "freebsd"), target_arch = "x86_64"))]
+    #[cfg(all(
+        any(target_os = "linux", target_os = "freebsd"),
+        target_arch = "x86_64"
+    ))]
     {
         // SAFETY: grants access to the single port address and writes it.
         unsafe {
@@ -148,11 +161,16 @@ fn write_port(addr: u16, val: u8) -> Result<()> {
         return Ok(());
     }
     let _ = (addr, val);
-    Err(Error::Transport("LPT backend unavailable on this platform/architecture".into()))
+    Err(Error::Transport(
+        "LPT backend unavailable on this platform/architecture".into(),
+    ))
 }
 
 fn read_port(addr: u16) -> Result<u8> {
-    #[cfg(all(any(target_os = "linux", target_os = "freebsd"), target_arch = "x86_64"))]
+    #[cfg(all(
+        any(target_os = "linux", target_os = "freebsd"),
+        target_arch = "x86_64"
+    ))]
     {
         // SAFETY: grants access to the single port address and reads it.
         unsafe {
@@ -161,5 +179,7 @@ fn read_port(addr: u16) -> Result<u8> {
         }
     }
     let _ = addr;
-    Err(Error::Transport("LPT backend unavailable on this platform/architecture".into()))
+    Err(Error::Transport(
+        "LPT backend unavailable on this platform/architecture".into(),
+    ))
 }

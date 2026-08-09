@@ -4,9 +4,7 @@
 //! mapping from §1 (write clock = C1, read clock = C2).
 
 use crate::error::{Error, Result};
-use crate::transport::{
-    Transport, CONTROL_DATA, CONTROL_IDLE, CONTROL_RCLK, CONTROL_WCLK,
-};
+use crate::transport::{CONTROL_DATA, CONTROL_IDLE, CONTROL_RCLK, CONTROL_WCLK, Transport};
 
 /// How many handshake attempts are made before giving up on ACK.
 const ACK_ATTEMPTS: u32 = 10_000;
@@ -23,7 +21,10 @@ pub struct Timing {
 impl Default for Timing {
     fn default() -> Self {
         // Modest conservative values; the original used loop-based delays.
-        Timing { data_settle_ns: 1, clock_half_ns: 1 }
+        Timing {
+            data_settle_ns: 1,
+            clock_half_ns: 1,
+        }
     }
 }
 

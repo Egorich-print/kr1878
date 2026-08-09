@@ -42,7 +42,9 @@ impl MemoryImage {
     /// command-memory size).
     pub fn from_program(program: &[u16]) -> Result<Self> {
         if program.len() > PROGRAM_WORDS {
-            return Err(Error::ProgramAddressOutOfRange { addr: program.len() as u32 });
+            return Err(Error::ProgramAddressOutOfRange {
+                addr: program.len() as u32,
+            });
         }
         let mut img = Self::default();
         img.program[..program.len()].copy_from_slice(program);

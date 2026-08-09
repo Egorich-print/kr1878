@@ -2,7 +2,10 @@
 //! `kr1878-programmer` crate; the core depends only on this trait so that the
 //! business logic stays platform-agnostic and testable.
 
-use crate::{error::Result, memory::{DATA_EEPROM_BYTES, MemoryImage}};
+use crate::{
+    error::Result,
+    memory::{DATA_EEPROM_BYTES, MemoryImage},
+};
 
 /// Identity data reported by [`Backend::identify`].
 #[derive(Debug, Clone, PartialEq, Eq)]

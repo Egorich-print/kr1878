@@ -1,6 +1,6 @@
 //! End-to-end tests for the TESSA assembler.
 
-use kr1878_assembler::{assemble, AssembleOutput};
+use kr1878_assembler::{AssembleOutput, assemble};
 
 fn img(src: &str) -> AssembleOutput {
     assemble(src).expect("assembly should succeed")

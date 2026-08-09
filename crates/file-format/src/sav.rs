@@ -14,7 +14,10 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum SavError {
     #[error("sav: could not read program word at index {index}: {source}")]
-    Read { index: usize, source: std::io::Error },
+    Read {
+        index: usize,
+        source: std::io::Error,
+    },
     #[error("sav: program image larger than program memory ({words} words)")]
     TooLarge { words: usize },
     #[error("sav: I/O error: {0}")]
@@ -55,7 +58,9 @@ pub fn write_sav<W: Write>(writer: &mut W, words: &[u16]) -> Result<(), SavError
         return Err(SavError::TooLarge { words: words.len() });
     }
     for (index, &word) in words.iter().enumerate() {
-        writer.write_all(&word.to_le_bytes()).map_err(|source| SavError::Read { index, source })?;
+        writer
+            .write_all(&word.to_le_bytes())
+            .map_err(|source| SavError::Read { index, source })?;
     }
     Ok(())
 }

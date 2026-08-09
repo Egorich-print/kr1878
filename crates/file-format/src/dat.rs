@@ -40,7 +40,10 @@ pub fn parse_dat(text: &str) -> Result<[u8; DATA_EEPROM_BYTES], DatError> {
         let code = line.split(';').next().unwrap_or("");
         for tok in code.split_whitespace() {
             if idx >= DATA_EEPROM_BYTES {
-                return Err(DatError::ParseSize { expected: DATA_EEPROM_BYTES, got: idx });
+                return Err(DatError::ParseSize {
+                    expected: DATA_EEPROM_BYTES,
+                    got: idx,
+                });
             }
             let v = u8::from_str_radix(tok, 16).map_err(|_| DatError::InvalidHex(tok.into()))?;
             out[idx] = v;
@@ -53,11 +56,20 @@ pub fn parse_dat(text: &str) -> Result<[u8; DATA_EEPROM_BYTES], DatError> {
 /// Write the data EEPROM content in the historical text format.
 pub fn write_dat<W: Write>(writer: &mut W, bytes: &[u8]) -> Result<(), DatError> {
     if bytes.len() != DATA_EEPROM_BYTES {
-        return Err(DatError::Size { expected: DATA_EEPROM_BYTES, got: bytes.len() });
+        return Err(DatError::Size {
+            expected: DATA_EEPROM_BYTES,
+            got: bytes.len(),
+        });
     }
     for (i, chunk) in bytes.chunks(8).enumerate() {
         let line: Vec<String> = chunk.iter().map(|b| format!("{b:02x}")).collect();
-        writeln!(writer, "{} ;{}...{} Bytes", line.join(" "), i * 8, i * 8 + 7)?;
+        writeln!(
+            writer,
+            "{} ;{}...{} Bytes",
+            line.join(" "),
+            i * 8,
+            i * 8 + 7
+        )?;
     }
     // Historical EOF marker.
     writer.write_all(&[0x1A])?;

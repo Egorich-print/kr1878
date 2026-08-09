@@ -38,11 +38,17 @@ pub enum ArpError {
 /// Parse a 32-byte `.arp` block.
 pub fn parse_arp(bytes: &[u8]) -> Result<ArpConfig, ArpError> {
     if bytes.len() < ARP_SIZE {
-        return Err(ArpError::Size { expected: ARP_SIZE, got: bytes.len() });
+        return Err(ArpError::Size {
+            expected: ARP_SIZE,
+            got: bytes.len(),
+        });
     }
     let magic = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
     if magic != ARP_MAGIC {
-        return Err(ArpError::BadMagic { expected: ARP_MAGIC, got: magic });
+        return Err(ArpError::BadMagic {
+            expected: ARP_MAGIC,
+            got: magic,
+        });
     }
     let dword = |off: usize| u32::from_le_bytes(bytes[off..off + 4].try_into().unwrap());
     Ok(ArpConfig {

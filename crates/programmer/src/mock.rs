@@ -2,7 +2,7 @@
 
 use kr1878_core::backend::{Backend, DeviceId};
 use kr1878_core::error::Result;
-use kr1878_core::memory::{DATA_EEPROM_BYTES, PROGRAM_WORDS, MemoryImage};
+use kr1878_core::memory::{DATA_EEPROM_BYTES, MemoryImage, PROGRAM_WORDS};
 
 /// A fully in-memory [`Backend`]; erased cells read back as `0xFFFF`.
 #[derive(Debug, Clone)]
@@ -18,7 +18,9 @@ impl Default for MockBackend {
 
 impl MockBackend {
     pub fn new() -> Self {
-        MockBackend { image: MemoryImage::new() }
+        MockBackend {
+            image: MemoryImage::new(),
+        }
     }
 
     pub fn image(&self) -> &MemoryImage {
@@ -28,7 +30,10 @@ impl MockBackend {
 
 impl Backend for MockBackend {
     fn identify(&mut self) -> Result<DeviceId> {
-        Ok(DeviceId { name: "mock (in-memory)".into(), revision: None })
+        Ok(DeviceId {
+            name: "mock (in-memory)".into(),
+            revision: None,
+        })
     }
 
     fn erase(&mut self) -> Result<()> {

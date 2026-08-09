@@ -78,8 +78,16 @@ fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::Assemble { source, out, dat } => cmd_assemble(source, out, dat),
         Cmd::Read { backend, out, dat } => cmd_read(backend, out, dat),
-        Cmd::Write { image, dat, backend } => cmd_write(image, dat, backend),
-        Cmd::Verify { image, dat, backend } => cmd_verify(image, dat, backend),
+        Cmd::Write {
+            image,
+            dat,
+            backend,
+        } => cmd_write(image, dat, backend),
+        Cmd::Verify {
+            image,
+            dat,
+            backend,
+        } => cmd_verify(image, dat, backend),
     }
 }
 
@@ -108,7 +116,11 @@ fn cmd_assemble(source: PathBuf, out: Option<PathBuf>, dat: Option<PathBuf>) -> 
 fn cmd_read(backend: BackendKind, out: Option<PathBuf>, dat: Option<PathBuf>) -> Result<()> {
     let mut b = make_backend(backend);
     let id = b.identify()?;
-    println!("device: {} ({})", id.name, id.revision.as_deref().unwrap_or("unknown"));
+    println!(
+        "device: {} ({})",
+        id.name,
+        id.revision.as_deref().unwrap_or("unknown")
+    );
     let img = ops::read(&mut *b)?;
     let out = out.unwrap_or_else(|| PathBuf::from("dump.sav"));
     write_sav(&out, &img.program)?;

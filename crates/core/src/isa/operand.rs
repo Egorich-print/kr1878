@@ -44,7 +44,10 @@ pub struct Operand {
 impl Operand {
     /// Create an operand; `index` must be in 0..=7.
     pub const fn new(segment: Segment, index: u8) -> Self {
-        Operand { segment, index: index & 0x07 }
+        Operand {
+            segment,
+            index: index & 0x07,
+        }
     }
 
     /// Build from a raw 5-bit field value.
@@ -87,9 +90,11 @@ impl Operand {
     pub fn parse_text(s: &str) -> Result<Operand> {
         let s = s.trim().strip_prefix('%').unwrap_or(s.trim());
         let mut chars = s.chars();
-        let seg_char = chars.next().ok_or_else(|| Error::Other("empty operand".into()))?;
-        let segment =
-            Segment::from_letter(seg_char).ok_or_else(|| Error::Other("bad segment letter".into()))?;
+        let seg_char = chars
+            .next()
+            .ok_or_else(|| Error::Other("empty operand".into()))?;
+        let segment = Segment::from_letter(seg_char)
+            .ok_or_else(|| Error::Other("bad segment letter".into()))?;
         let index: u8 = chars
             .collect::<String>()
             .parse()

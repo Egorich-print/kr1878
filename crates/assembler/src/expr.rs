@@ -4,7 +4,8 @@
 //!   1) `()` grouping
 //!   2) `* / &`  (mul / div / bitwise-AND)  — tightest binary
 //!   3) `+ - \ !`  (add / sub / XOR / OR)    — looser, left-associative
-//!   unary  `+`, `-`, `^` (NOT)
+//!
+//!      unary  `+`, `-`, `^` (NOT)
 //!
 //! Note the non-standard mapping: `\` is XOR and `!` is OR, while `^` is NOT.
 
@@ -77,9 +78,13 @@ impl Expr {
                     BinOp::Sub => lv.checked_sub(rv),
                     BinOp::Mul => lv.checked_mul(rv),
                     BinOp::And => Some(lv & rv),
-                    BinOp::Div => if rv == 0 {
-                        return Err(AsmError::new(span, "division by zero"));
-                    } else { lv.checked_div(rv) },
+                    BinOp::Div => {
+                        if rv == 0 {
+                            return Err(AsmError::new(span, "division by zero"));
+                        } else {
+                            lv.checked_div(rv)
+                        }
+                    }
                     BinOp::Xor => Some(lv ^ rv),
                     BinOp::Or => Some(lv | rv),
                 };
@@ -120,7 +125,10 @@ impl<'a> Parser<'a> {
     pub fn parse(mut self) -> Result<Expr> {
         let e = self.addition()?;
         if !matches!(self.peek(), Token::Eof) {
-            return Err(AsmError::new(self.span, format!("unexpected {}", self.peek().describe())));
+            return Err(AsmError::new(
+                self.span,
+                format!("unexpected {}", self.peek().describe()),
+            ));
         }
         Ok(e)
     }
@@ -162,7 +170,11 @@ impl<'a> Parser<'a> {
         match self.peek() {
             Token::Minus => {
                 self.bump();
-                Ok(Expr::Unary { negate: true, not: false, inner: Box::new(self.unary()?) })
+                Ok(Expr::Unary {
+                    negate: true,
+                    not: false,
+                    inner: Box::new(self.unary()?),
+                })
             }
             Token::Plus => {
                 self.bump();
@@ -170,7 +182,11 @@ impl<'a> Parser<'a> {
             }
             Token::Caret => {
                 self.bump();
-                Ok(Expr::Unary { negate: false, not: true, inner: Box::new(self.unary()?) })
+                Ok(Expr::Unary {
+                    negate: false,
+                    not: true,
+                    inner: Box::new(self.unary()?),
+                })
             }
             _ => self.primary(),
         }
@@ -201,7 +217,10 @@ impl<'a> Parser<'a> {
                     _ => Err(AsmError::new(self.span, "expected `)`")),
                 }
             }
-            other => Err(AsmError::new(self.span, format!("expected expression, found {}", other.describe()))),
+            other => Err(AsmError::new(
+                self.span,
+                format!("expected expression, found {}", other.describe()),
+            )),
         }
     }
 }

@@ -19,6 +19,6 @@ pub mod transport;
 pub mod testutil;
 
 pub use bits::Timing;
-pub use device::{Device, SessionResult, CMD_DATA, CMD_PROGRAM};
+pub use device::{CMD_DATA, CMD_PROGRAM, Device, SessionResult};
 pub use error::{Error, Result};
-pub use transport::{Transport, CONTROL_IDLE};
+pub use transport::{CONTROL_IDLE, Transport};

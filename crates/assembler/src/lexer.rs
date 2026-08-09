@@ -190,21 +190,22 @@ pub fn tokenize(source: &str, span: Span) -> Result<Vec<Token>> {
                         return Err(AsmError::new(
                             span,
                             format!("invalid number literal `{word}`"),
-                        ))
+                        ));
                     }
                 }
             }
             c if c.is_ascii_alphabetic() => {
                 let start = i;
-                while i < chars.len()
-                    && (chars[i].is_ascii_alphanumeric() || chars[i] == '_')
-                {
+                while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
                     i += 1;
                 }
                 out.push(Token::Sym(chars[start..i].iter().collect()));
             }
             other => {
-                return Err(AsmError::new(span, format!("unexpected character `{other}`")));
+                return Err(AsmError::new(
+                    span,
+                    format!("unexpected character `{other}`"),
+                ));
             }
         }
     }
@@ -236,17 +237,6 @@ mod tests {
 
     fn lex(s: &str) -> Result<Vec<Token>> {
         tokenize(s, Span { file: 0, line: 1 })
-    }
-
-    fn syms(s: &str) -> Vec<String> {
-        lex(s)
-            .unwrap()
-            .into_iter()
-            .filter_map(|t| match t {
-                Token::Sym(x) => Some(x),
-                _ => None,
-            })
-            .collect()
     }
 
     #[test]

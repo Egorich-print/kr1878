@@ -22,23 +22,72 @@ pub enum Place {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Instruction {
     // ---- two-operand: opcode(6) | src(5) | dst(5) ----
-    Mov { dst: Operand, src: Operand },
-    Cmp { dst: Operand, src: Operand },
-    Sub { dst: Operand, src: Operand },
-    Add { dst: Operand, src: Operand },
-    And { dst: Operand, src: Operand },
-    Or  { dst: Operand, src: Operand },
-    Xor { dst: Operand, src: Operand },
+    Mov {
+        dst: Operand,
+        src: Operand,
+    },
+    Cmp {
+        dst: Operand,
+        src: Operand,
+    },
+    Sub {
+        dst: Operand,
+        src: Operand,
+    },
+    Add {
+        dst: Operand,
+        src: Operand,
+    },
+    And {
+        dst: Operand,
+        src: Operand,
+    },
+    Or {
+        dst: Operand,
+        src: Operand,
+    },
+    Xor {
+        dst: Operand,
+        src: Operand,
+    },
 
     // ---- literal ----
-    Movl { dst: Operand, value: u8 }, // 8-bit
-    Cmpl { dst: Operand, value: u8 }, // 8-bit
-    Addl { dst: Operand, value: u8 }, // 5-bit (0..=31)
-    Subl { dst: Operand, value: u8 }, // 5-bit (0..=31)
-    Bic  { dst: Operand, tetrad: u8, place: Place },
-    Bis  { dst: Operand, tetrad: u8, place: Place },
-    Btg  { dst: Operand, tetrad: u8, place: Place },
-    Btt  { dst: Operand, tetrad: u8, place: Place },
+    Movl {
+        dst: Operand,
+        value: u8,
+    }, // 8-bit
+    Cmpl {
+        dst: Operand,
+        value: u8,
+    }, // 8-bit
+    Addl {
+        dst: Operand,
+        value: u8,
+    }, // 5-bit (0..=31)
+    Subl {
+        dst: Operand,
+        value: u8,
+    }, // 5-bit (0..=31)
+    Bic {
+        dst: Operand,
+        tetrad: u8,
+        place: Place,
+    },
+    Bis {
+        dst: Operand,
+        tetrad: u8,
+        place: Place,
+    },
+    Btg {
+        dst: Operand,
+        tetrad: u8,
+        place: Place,
+    },
+    Btt {
+        dst: Operand,
+        tetrad: u8,
+        place: Place,
+    },
 
     // ---- one-operand ----
     Swap(Operand),
@@ -53,31 +102,66 @@ pub enum Instruction {
     Sbc(Operand),
 
     // ---- service registers & processor status ----
-    Ldr { reg: u8, value: u8 }, // reg 0..=7, value 8-bit
-    Mfpr { dst: Operand, reg: u8 },
-    Mtpr { reg: u8, src: Operand },
-    Push { reg: u8 },
-    Pop  { reg: u8 },
-    Sst  { mask: u8 }, // 4-bit
-    Cst  { mask: u8 }, // 4-bit
+    Ldr {
+        reg: u8,
+        value: u8,
+    }, // reg 0..=7, value 8-bit
+    Mfpr {
+        dst: Operand,
+        reg: u8,
+    },
+    Mtpr {
+        reg: u8,
+        src: Operand,
+    },
+    Push {
+        reg: u8,
+    },
+    Pop {
+        reg: u8,
+    },
+    Sst {
+        mask: u8,
+    }, // 4-bit
+    Cst {
+        mask: u8,
+    }, // 4-bit
     Tof,
     Tdc,
 
     // ---- control transfer ----
-    Jmp  { addr: u16 }, // 10-bit absolute
-    Jsr  { addr: u16 },
-    Jz   { addr: u16 },
-    Jnz  { addr: u16 },
-    Jns  { addr: u16 },
-    Js   { addr: u16 },
-    Jnc  { addr: u16 },
-    Jc   { addr: u16 },
+    Jmp {
+        addr: u16,
+    }, // 10-bit absolute
+    Jsr {
+        addr: u16,
+    },
+    Jz {
+        addr: u16,
+    },
+    Jnz {
+        addr: u16,
+    },
+    Jns {
+        addr: u16,
+    },
+    Js {
+        addr: u16,
+    },
+    Jnc {
+        addr: u16,
+    },
+    Jc {
+        addr: u16,
+    },
     Ijmp,
     Ijsr,
     Rts,
     Rti,
     /// Return with carry set to `carry`.
-    Rtsc { carry: bool },
+    Rtsc {
+        carry: bool,
+    },
 
     // ---- special ----
     Nop,
@@ -94,7 +178,7 @@ mod op {
     pub const SUB: u16 = 0b000011;
     pub const ADD: u16 = 0b000100;
     pub const AND: u16 = 0b000101;
-    pub const OR:  u16 = 0b000110;
+    pub const OR: u16 = 0b000110;
     pub const XOR: u16 = 0b000111;
 
     pub const BIC: u16 = 0b001010;
@@ -129,7 +213,7 @@ pub mod fixed_word {
 }
 
 impl Instruction {
-/// Encode `self` into its 16-bit machine word.
+    /// Encode `self` into its 16-bit machine word.
     pub fn encode(&self) -> Result<u16> {
         use Instruction::*;
         let d = |x: Operand| x.to_u8() as u16;
@@ -165,7 +249,9 @@ impl Instruction {
             Adc(o) => one_op(0b00000001001, d(o)),
             Sbc(o) => one_op(0b00000001010, d(o)),
 
-            Ldr { reg, value } => (op::LDR << 11) | ((value as u16 & 0xFF) << 3) | (reg as u16 & 0x7),
+            Ldr { reg, value } => {
+                (op::LDR << 11) | ((value as u16 & 0xFF) << 3) | (reg as u16 & 0x7)
+            }
             Mfpr { dst, reg } => (op::MFPR << 8) | ((reg as u16 & 0x7) << 5) | d(dst),
             Mtpr { reg, src } => (op::MTPR << 8) | ((reg as u16 & 0x7) << 5) | d(src),
             Push { reg } => (0b0000000000010 << 3) | (reg as u16 & 0x7),
@@ -216,10 +302,7 @@ fn tetrad_op(opcode: u16, tetrad: u8, place: Place, dst: u16) -> u16 {
         Place::High => 1 << 9,
         Place::Low => 0,
     };
-    ((opcode & 0x3F) << 10)
-        | place_bit
-        | ((tetrad as u16 & 0x0F) << 5)
-        | (dst & 0x1F)
+    ((opcode & 0x3F) << 10) | place_bit | ((tetrad as u16 & 0x0F) << 5) | (dst & 0x1F)
 }
 
 /// opcode(11) | dst(5)
@@ -286,8 +369,20 @@ mod tests {
     #[test]
     fn bic_place_bits() {
         let dst = Operand::new(Segment::D, 7);
-        let lo = Instruction::Bic { dst, tetrad: 0x9, place: Place::Low }.encode().unwrap();
-        let hi = Instruction::Bic { dst, tetrad: 0x9, place: Place::High }.encode().unwrap();
+        let lo = Instruction::Bic {
+            dst,
+            tetrad: 0x9,
+            place: Place::Low,
+        }
+        .encode()
+        .unwrap();
+        let hi = Instruction::Bic {
+            dst,
+            tetrad: 0x9,
+            place: Place::High,
+        }
+        .encode()
+        .unwrap();
         assert_eq!(op_of(lo), op::BIC);
         assert_eq!(lo & 0x0200, 0);
         assert_eq!(hi & 0x0200, 0x0200);

@@ -27,7 +27,10 @@ pub struct AsmError {
 
 impl AsmError {
     pub fn new(span: Span, msg: impl Into<String>) -> Self {
-        AsmError { span, msg: msg.into() }
+        AsmError {
+            span,
+            msg: msg.into(),
+        }
     }
 }
 
@@ -42,9 +45,6 @@ pub type Result<T> = std::result::Result<T, AsmError>;
 
 impl From<kr1878_core::error::Error> for AsmError {
     fn from(e: kr1878_core::error::Error) -> Self {
-        AsmError::new(
-            Span { file: 0, line: 0 },
-            format!("core: {e}"),
-        )
+        AsmError::new(Span { file: 0, line: 0 }, format!("core: {e}"))
     }
 }

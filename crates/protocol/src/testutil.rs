@@ -3,7 +3,7 @@
 use crate::device::{CMD_DATA, CMD_PROGRAM};
 use crate::error::Result;
 use crate::transport::{
-    Transport, CONTROL_DATA, CONTROL_IDLE, CONTROL_WCLK, STATUS_ACK, STATUS_BUSY,
+    CONTROL_DATA, CONTROL_IDLE, CONTROL_WCLK, STATUS_ACK, STATUS_BUSY, Transport,
 };
 
 /// A transport that records every control/data write and can script status
@@ -144,8 +144,8 @@ impl Transport for SimulatorTransport {
             }
         }
         // Read clock rising edge: present the next stored bit on BUSY.
-        let rclk_rose =
-            prev & crate::transport::CONTROL_RCLK == 0 && byte & crate::transport::CONTROL_RCLK != 0;
+        let rclk_rose = prev & crate::transport::CONTROL_RCLK == 0
+            && byte & crate::transport::CONTROL_RCLK != 0;
         if rclk_rose {
             let store = self.store();
             if self.read_ptr < store.len() {

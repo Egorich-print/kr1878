@@ -54,7 +54,11 @@ impl Symbols {
         }
         self.labels.insert(
             name.to_string(),
-            SymValue { value: value as i64, is_label: true, line },
+            SymValue {
+                value: value as i64,
+                is_label: true,
+                line,
+            },
         );
         Ok(())
     }
@@ -89,12 +93,12 @@ impl Symbols {
         if let Some(s) = self.labels.get(name) {
             return Some(s.value);
         }
-        if let Some(digits) = name.strip_prefix('$') {
-            if let Ok(num) = digits.parse::<u32>() {
-                for sc in (0..=scope).rev() {
-                    if let Some(l) = self.locals.get(&(sc, num)) {
-                        return Some(l.value as i64);
-                    }
+        if let Some(digits) = name.strip_prefix('$')
+            && let Ok(num) = digits.parse::<u32>()
+        {
+            for sc in (0..=scope).rev() {
+                if let Some(l) = self.locals.get(&(sc, num)) {
+                    return Some(l.value as i64);
                 }
             }
         }

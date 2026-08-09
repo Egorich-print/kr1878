@@ -105,9 +105,13 @@ ADR-реестр: `docs/adr/`. Открытые решения фиксирую�
 ## 8. Как проверить текущее состояние
 
 ```
-cargo test --workspace     # юнит + интеграционные тесты
-cargo build --workspace    # сборка
+cargo test --workspace              # юнит + интеграционные тесты (58)
+cargo build --workspace             # сборка
+cargo clippy --workspace --all-targets -- -D warnings  # обязателен
+cargo fmt --all -- --check          # обязателен
 ```
+
+> Блоки 1–6 (ADR-004): lint hygiene ✅ · protocol → WireBackend coverage · CLI/UI.
 
 ---
 

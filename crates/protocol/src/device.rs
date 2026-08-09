@@ -11,8 +11,8 @@
 //! is fully platform-independent and testable. The `programmer` crate only adds
 //! concrete [`Transport`] implementations.
 
-use crate::bits::{read_bits, wait_ack, write_bits, Timing};
-use crate::command::{command_pulse, idle_off, DEFAULT_ERASE_TOGGLES};
+use crate::bits::{Timing, read_bits, wait_ack, write_bits};
+use crate::command::{DEFAULT_ERASE_TOGGLES, command_pulse, idle_off};
 use crate::error::Result;
 use crate::transport::Transport;
 
@@ -42,7 +42,10 @@ pub struct Device<'a> {
 impl<'a> Device<'a> {
     /// Create a driver for `transport` with default timing.
     pub fn new(transport: &'a mut dyn Transport) -> Self {
-        Device { transport, timing: Timing::default() }
+        Device {
+            transport,
+            timing: Timing::default(),
+        }
     }
 
     /// Create a driver for `transport` with explicit timing.
@@ -122,7 +125,11 @@ impl<'a> Device<'a> {
         let _ = expected_config;
         if self.verify_image_equals(program, data)? {
             // Already in the desired state; skip to avoid an unnecessary erase.
-            return Ok(SessionResult { verified: true, program_back: program.to_vec(), data_back: data.to_vec() });
+            return Ok(SessionResult {
+                verified: true,
+                program_back: program.to_vec(),
+                data_back: data.to_vec(),
+            });
         }
 
         idle_off(self.transport)?;

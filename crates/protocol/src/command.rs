@@ -1,7 +1,7 @@
 //! Command-phase helpers: the erase/command pulse and the idle/off sequence.
 
 use crate::error::Result;
-use crate::transport::{Transport, CONTROL_CMD, CONTROL_IDLE};
+use crate::transport::{CONTROL_CMD, CONTROL_IDLE, Transport};
 
 /// Data-register value that begins a command/erase phase.
 pub const DATA_ERASE_START: u8 = 0x38;
