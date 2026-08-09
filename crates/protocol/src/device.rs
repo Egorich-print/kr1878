@@ -20,16 +20,23 @@ use crate::transport::Transport;
 pub const CMD_PROGRAM: u8 = 0x03;
 /// Command code selecting the data EEPROM for a write phase.
 pub const CMD_DATA: u8 = 0x02;
+/// Command code selecting the OSC/config channel.
+///
+/// Verified against the datasheet (gl. 09) via REVERSE_ENGINEERING.md §9.2:
+/// `0x03` = command EEPROM, `0x02` = data EEPROM, `0x01` = OSC configuration.
+pub const CMD_CONFIG: u8 = 0x01;
 
 /// Result of a full programming session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionResult {
-    /// Whether both program and data memories verified after write.
+    /// Whether all requested memories verified after write.
     pub verified: bool,
     /// Words read back from program memory.
     pub program_back: Vec<u16>,
     /// Bytes read back from data EEPROM.
     pub data_back: Vec<u8>,
+    /// OSC config byte read back (only when a config was programmed).
+    pub config_back: Option<u8>,
 }
 
 /// A driver for the KR1878VE1 programming wire protocol over a [`Transport`].
@@ -114,21 +121,38 @@ impl<'a> Device<'a> {
         Ok(out)
     }
 
+    /// Write the OSC configuration byte.
+    pub fn write_config(&mut self, value: u8) -> Result<()> {
+        self.select(CMD_CONFIG)?;
+        wait_ack(self.transport, true)?;
+        write_bits(self.transport, 8, u16::from(value), &self.timing)?;
+        wait_ack(self.transport, true)?;
+        Ok(())
+    }
+
+    /// Read the OSC configuration byte back.
+    pub fn read_config(&mut self) -> Result<u8> {
+        self.select(CMD_CONFIG)?;
+        Ok((read_bits(self.transport, 8, &self.timing)? & 0xFF) as u8)
+    }
+
     /// Run the complete program session: erase, write program, verify program,
-    /// write data, verify data. Returns the read-back contents for review.
+    /// write data, verify data, and whenever `expected_config` is set also
+    /// write and verify the OSC config channel. Returns the read-back contents.
     pub fn run(
         &mut self,
         program: &[u16],
         data: &[u8],
         expected_config: Option<u8>,
     ) -> Result<SessionResult> {
-        let _ = expected_config;
-        if self.verify_image_equals(program, data)? {
+        let mut config_back = None;
+        if self.verify_image_equals(program, data, expected_config)? {
             // Already in the desired state; skip to avoid an unnecessary erase.
             return Ok(SessionResult {
                 verified: true,
                 program_back: program.to_vec(),
                 data_back: data.to_vec(),
+                config_back: expected_config,
             });
         }
 
@@ -143,19 +167,38 @@ impl<'a> Device<'a> {
         let data_back = self.read_bytes(data.len())?;
         let data_ok = data_back == data;
 
+        if let Some(cfg) = expected_config {
+            self.write_config(cfg)?;
+            config_back = Some(self.read_config()?);
+        }
+        let config_ok = match expected_config {
+            None => true,
+            Some(cfg) => config_back == Some(cfg),
+        };
+
         idle_off(self.transport)?;
         Ok(SessionResult {
-            verified: program_ok && data_ok,
+            verified: program_ok && data_ok && config_ok,
             program_back,
             data_back,
+            config_back,
         })
     }
 
-    /// Cheap guard: are the memories already equal to `program`/`data`?
-    fn verify_image_equals(&mut self, program: &[u16], data: &[u8]) -> Result<bool> {
+    /// Cheap guard: are the memories already equal to the requested state?
+    fn verify_image_equals(
+        &mut self,
+        program: &[u16],
+        data: &[u8],
+        expected_config: Option<u8>,
+    ) -> Result<bool> {
         let p = self.read_words(program.len())?;
         let d = self.read_bytes(data.len())?;
-        Ok(p == program && d == data)
+        let config_ok = match expected_config {
+            None => true,
+            Some(cfg) => self.read_config()? == cfg,
+        };
+        Ok(p == program && d == data && config_ok)
     }
 }
 
@@ -210,6 +253,38 @@ mod tests {
         dev.write_words(&words).unwrap();
         dev.write_bytes(&data).unwrap();
         // Re-select program and confirm the byte write did not clobber words.
+        let back = dev.read_words(words.len()).unwrap();
+        assert_eq!(back, words);
+    }
+
+    #[test]
+    fn config_channel_roundtrips() {
+        let mut sim = SimulatorTransport::default();
+        let mut dev = Device::new(&mut sim);
+        dev.write_config(0x02).unwrap();
+        assert_eq!(dev.read_config().unwrap(), 0x02);
+        let mut sim = SimulatorTransport::default();
+        let program = vec![0x1234u16];
+        let data = vec![0x56; 2];
+        let res = {
+            let mut dev = Device::new(&mut sim);
+            dev.run(&program, &data, Some(0x01)).unwrap()
+        };
+        assert!(res.verified);
+        assert_eq!(res.config_back, Some(0x01));
+        let mut dev = Device::new(&mut sim);
+        let r1 = dev.read_config().unwrap();
+        let r2 = dev.read_config().unwrap();
+        assert_eq!(r1, 0x01);
+        assert_eq!(r2, 0x01);
+    }
+
+    #[test]
+    fn bulk_read_words_reads_entire_memory() {
+        let mut sim = SimulatorTransport::default();
+        let mut dev = Device::new(&mut sim);
+        let words: Vec<u16> = (0..1024u16).collect();
+        dev.write_words(&words).unwrap();
         let back = dev.read_words(words.len()).unwrap();
         assert_eq!(back, words);
     }

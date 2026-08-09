@@ -58,12 +58,12 @@ ADR-реестр: `docs/adr/`. Открытые решения фиксирую�
 
 | Компонент | Статус |
 |-----------|--------|
-| `core` (ISA кодирование, память, ops, backend trait) | ✅ реализован, 12 тестов |
+| `core` (ISA кодирование, память, ops, backend trait) | ✅ реализован, 14 тестов |
 | `file-format` (`.sav`, `.dat`, `.arp`) | ✅ реализован, 12 тестов |
 | `assembler` (`kr1878-assembler`) | ✅ двухпроходный, 16 тестов |
-| `protocol` (`kr1878-protocol`) | ✅ битбанг + драйвер `Device`, 14 тестов |
-| `programmer` (`kr1878-programmer`) | ✅ LPT/mock/wire backends, 5 тестов |
-| `cli` (`kr1878`) | ✅ assemble/read/write/verify (clap) |
+| `protocol` (`kr1878-protocol`) | ✅ битбанг + драйвер `Device`, 16 тестов, канал OSC/config |
+| `programmer` (`kr1878-programmer`) | ✅ LPT/mock/wire backends, 7 тестов |
+| `cli` (`kr1878`) | ✅ assemble/read/write/verify (clap; `--osc`/`--arp`) |
 
 **Стек реализованного ассемблера:**
 - Препроцессор: `#define`, `#include` (через loader), `.macro/.endmacro` с подстановкой аргументов и авто-переименованием `@N`, `.if/.else/.endif`.
@@ -95,8 +95,10 @@ ADR-реестр: `docs/adr/`. Открытые решения фиксирую�
 6. ✅ `protocol` — битбанг-примитивы + драйвер `Device::run` (14 тестов).
 7. ✅ `programmer` — бэкенды `Mock` + `Wire`/`LPT` (LPT-полярность не проверена на железе).
 8. ✅ CLI `kr1878 assemble|read|write|verify` (clap, `--backend mock|lpt`).
-9. 🔜 Desktop-приложение (Tauri/Svelte) тонкий UI.
-10. 🔜 Документация пользователя + инструкция.
+9. ✅ Канал OSC/config завершён (protocol `CMD_CONFIG=0x01`, `run`/verify через `expected_config`; sim store; `config_back`); `Device::write_config/read_config`; bulk read 1K слов покрыт тестом.
+10. ✅ `.arp`/OSC выведены на CLI: `kr1878 write|verify --osc N --arp file` (phase-gates `WriteOptions` в `core::ops`).
+11. 🔜 Desktop-приложение (Tauri/Svelte) тонкий UI.
+12. 🔜 Документация пользователя + инструкция.
 
 > Статус этапа: **CLI этапа 3 готов, остался desktop-UI (этап 4).**
 

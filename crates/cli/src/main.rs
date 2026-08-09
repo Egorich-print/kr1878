@@ -3,7 +3,7 @@
 //! Subcommands:
 //!   assemble   `.mic` → `.sav` (+ optional `.dat`)
 //!   read       dump device/mock image to `.sav` / `.dat`
-//!   write      program a `.sav` (+ `.dat`) image
+//!   write      program a `.sav` (+ `.dat`) image (optionally `--osc`, `--arp`)
 //!   verify     compare device against a `.sav` (+ `.dat`) image
 
 use std::fs::File;
@@ -15,7 +15,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use kr1878_core::backend::Backend;
 use kr1878_core::memory::MemoryImage;
-use kr1878_core::ops;
+use kr1878_core::ops::{self, WriteOptions};
+use kr1878_file_format::arp as arpfmt;
 use kr1878_file_format::dat as datfmt;
 use kr1878_file_format::sav as savfmt;
 use kr1878_programmer::{LptBackend, MockBackend};
@@ -61,16 +62,31 @@ enum Cmd {
         image: PathBuf,
         #[arg(short, long)]
         dat: Option<PathBuf>,
-        #[arg(short = 'b', value_enum, default_value_t = BackendKind::Mock)]
+        #[arg(short = 'b', long, value_enum, default_value_t = BackendKind::Mock)]
         backend: BackendKind,
+        /// OSC config byte (original `/c:NNN`).
+        #[arg(long)]
+        osc: Option<u8>,
+        /// Programmer config `e03prg.arp` (phase gates).
+        #[arg(long)]
+        arp: Option<PathBuf>,
+        /// Skip the erase phase.
+        #[arg(long)]
+        no_erase: bool,
     },
     /// Verify the device against a `.sav` (optionally `.dat`) image.
     Verify {
         image: PathBuf,
         #[arg(short, long)]
         dat: Option<PathBuf>,
-        #[arg(short = 'b', value_enum, default_value_t = BackendKind::Mock)]
+        #[arg(short = 'b', long, value_enum, default_value_t = BackendKind::Mock)]
         backend: BackendKind,
+        /// OSC config byte to expect (e.g. `/c:NNN`).
+        #[arg(long)]
+        osc: Option<u8>,
+        /// Program `e03prg.arp` (phase gates).
+        #[arg(long)]
+        arp: Option<PathBuf>,
     },
 }
 
@@ -82,12 +98,17 @@ fn main() -> Result<()> {
             image,
             dat,
             backend,
-        } => cmd_write(image, dat, backend),
+            osc,
+            arp,
+            no_erase,
+        } => cmd_write(image, dat, backend, osc, arp, no_erase),
         Cmd::Verify {
             image,
             dat,
             backend,
-        } => cmd_verify(image, dat, backend),
+            osc,
+            arp,
+        } => cmd_verify(image, dat, backend, osc, arp),
     }
 }
 
@@ -95,6 +116,22 @@ fn make_backend(kind: BackendKind) -> Box<dyn Backend> {
     match kind {
         BackendKind::Mock => Box::new(MockBackend::new()),
         BackendKind::Lpt => Box::new(LptBackend::new()),
+    }
+}
+
+fn load_arp(path: Option<&Path>) -> Result<WriteOptions> {
+    match path {
+        None => Ok(WriteOptions::default()),
+        Some(p) => {
+            let bytes = std::fs::read(p).with_context(|| format!("open {}", p.display()))?;
+            let cfg = arpfmt::parse_arp(&bytes).context("parse .arp")?;
+            Ok(WriteOptions {
+                erase: cfg.erase_option,
+                program: cfg.program_write,
+                data: cfg.data_write,
+                config: cfg.config_write,
+            })
+        }
     }
 }
 
@@ -129,13 +166,28 @@ fn cmd_read(backend: BackendKind, out: Option<PathBuf>, dat: Option<PathBuf>) ->
         write_dat(&d, &img.data)?;
         println!("read: data -> {}", d.display());
     }
+    if let Some(cfg) = img.config {
+        println!("read: osc config = 0x{cfg:02X}");
+    }
     Ok(())
 }
 
-fn cmd_write(image: PathBuf, dat: Option<PathBuf>, backend: BackendKind) -> Result<()> {
+fn cmd_write(
+    image: PathBuf,
+    dat: Option<PathBuf>,
+    backend: BackendKind,
+    osc: Option<u8>,
+    arp: Option<PathBuf>,
+    no_erase: bool,
+) -> Result<()> {
     let mut b = make_backend(backend);
-    let img = load_image(&image, dat.as_deref())?;
-    if ops::program(&mut *b, &img)? {
+    let mut img = load_image(&image, dat.as_deref())?;
+    img.config = osc.or(img.config);
+    let mut opts = load_arp(arp.as_deref())?;
+    if no_erase {
+        opts.erase = false;
+    }
+    if ops::program_with(&mut *b, &img, &opts)? {
         println!("programmed + verified");
         Ok(())
     } else {
@@ -143,10 +195,18 @@ fn cmd_write(image: PathBuf, dat: Option<PathBuf>, backend: BackendKind) -> Resu
     }
 }
 
-fn cmd_verify(image: PathBuf, dat: Option<PathBuf>, backend: BackendKind) -> Result<()> {
+fn cmd_verify(
+    image: PathBuf,
+    dat: Option<PathBuf>,
+    backend: BackendKind,
+    osc: Option<u8>,
+    arp: Option<PathBuf>,
+) -> Result<()> {
     let mut b = make_backend(backend);
-    let img = load_image(&image, dat.as_deref())?;
-    if ops::verify(&mut *b, &img)? {
+    let mut img = load_image(&image, dat.as_deref())?;
+    img.config = osc.or(img.config);
+    let opts = load_arp(arp.as_deref())?;
+    if ops::verify_with(&mut *b, &img, &opts)? {
         println!("verify OK");
         Ok(())
     } else {

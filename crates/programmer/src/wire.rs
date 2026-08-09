@@ -80,4 +80,18 @@ impl Backend for WireBackend<'_> {
             .map_err(|e| Error::Other(e.to_string()))?;
         Ok(res.verified)
     }
+
+    fn write_config(&mut self, value: u8) -> Result<()> {
+        self.device
+            .write_config(value)
+            .map_err(|e| Error::Other(e.to_string()))
+    }
+
+    fn read_config(&mut self) -> Result<Option<u8>> {
+        let v = self
+            .device
+            .read_config()
+            .map_err(|e| Error::Other(e.to_string()))?;
+        Ok(Some(v))
+    }
 }

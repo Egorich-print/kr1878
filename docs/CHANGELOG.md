@@ -21,6 +21,15 @@
 - `read_words`/`read_bytes` повторно выбирают память (`select(CMD_PROGRAM/CMD_DATA)`); симулятор сбрасывает счётчик чтения при `write_data` (привязка к памяти).
 - Симулятор тактирует запись только при выбранном адресе записи — импульс стирания/команды не даёт битов.
 - `read_bits` семполирует BUSY после фронта RCLK и обнаруживает front по фронту (не по уровню).
+- `write_bits`/`read_bits` больше не пишут лидирующий `CONTROL_IDLE`: если шина была в all-off (после `idle_off`), этот фазовый фронт давал лишний бит (смещение канала на 1). Теперь первый низкий такт убирает и запись, и чтение.
+
+### Added (Block 2 — OSC / config канал)
+- `kr1878-protocol`: `CMD_CONFIG = 0x01`, `Device::write_config/read_config`, `run`/`verify_image_equals` учитывают `expected_config`, `SessionResult::config_back`.
+- `kr1878-protocol`: `SimulatorTransport` хранит `config_bits`; запись/чтение канала OSC.
+- `kr1878-core`: `ops::program_with/verify_with` + `WriteOptions` (phase-gates; источник — `.arp`), `Backend::write_config/read_config` (default no-op), `read()` возвращает `config`.
+- `kr1878-programmer`: `MockBackend`/`WireBackend` реализуют config-канал.
+- `kr1878` CLI: `write/verify --osc N --arp file`; `--no-erase`; `read` печатает OSC-байт.
+- Тесты: 16 (protocol), 14 (core), 7 (programmer), bulk read 1K слов.
 
 ## Earlier
 - `core`: ISA (isa/operand), memory, ops, `Backend` trait — 12 тестов.

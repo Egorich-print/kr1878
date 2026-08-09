@@ -37,4 +37,16 @@ pub trait Backend {
 
     /// Program + verify in one call, mirroring the historical workflow.
     fn program(&mut self, image: &MemoryImage) -> Result<bool>;
+
+    /// Write the OSC/config byte (channel `0x01`). Default: no-op for
+    /// backends without a config channel.
+    fn write_config(&mut self, _value: u8) -> Result<()> {
+        Ok(())
+    }
+
+    /// Read the OSC/config byte back. Returns `None` when the backend has no
+    /// config channel (default).
+    fn read_config(&mut self) -> Result<Option<u8>> {
+        Ok(None)
+    }
 }

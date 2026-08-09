@@ -65,6 +65,15 @@ impl Backend for MockBackend {
         self.image = image.clone();
         Ok(true)
     }
+
+    fn write_config(&mut self, value: u8) -> Result<()> {
+        self.image.config = Some(value);
+        Ok(())
+    }
+
+    fn read_config(&mut self) -> Result<Option<u8>> {
+        Ok(self.image.config)
+    }
 }
 
 #[cfg(test)]

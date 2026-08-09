@@ -1,6 +1,6 @@
 //! Test utilities: a passive recording transport and a full device simulator.
 
-use crate::device::{CMD_DATA, CMD_PROGRAM};
+use crate::device::{CMD_CONFIG, CMD_DATA, CMD_PROGRAM};
 use crate::error::Result;
 use crate::transport::{
     CONTROL_DATA, CONTROL_IDLE, CONTROL_WCLK, STATUS_ACK, STATUS_BUSY, Transport,
@@ -94,6 +94,7 @@ impl Transport for RecordingTransport {
 pub struct SimulatorTransport {
     program_bits: Vec<bool>,
     data_bits: Vec<bool>,
+    config_bits: Vec<bool>,
     last_code: u8,
     read_ptr: usize,
     read_level: bool,
@@ -107,6 +108,9 @@ impl SimulatorTransport {
     pub fn data_bits(&self) -> &[bool] {
         &self.data_bits
     }
+    pub fn config_bits(&self) -> &[bool] {
+        &self.config_bits
+    }
 }
 
 impl Default for SimulatorTransport {
@@ -114,6 +118,7 @@ impl Default for SimulatorTransport {
         SimulatorTransport {
             program_bits: Vec::new(),
             data_bits: Vec::new(),
+            config_bits: Vec::new(),
             last_code: 0,
             read_ptr: 0,
             read_level: false,
@@ -137,10 +142,11 @@ impl Transport for SimulatorTransport {
         // pulses (unselected states) therefore do not latch.
         if prev & CONTROL_WCLK == 0 && byte & CONTROL_WCLK != 0 {
             let bit = byte & CONTROL_DATA != 0;
-            if self.last_code == CMD_DATA {
-                self.data_bits.push(bit);
-            } else if self.last_code == CMD_PROGRAM {
-                self.program_bits.push(bit);
+            match self.last_code {
+                CMD_DATA => self.data_bits.push(bit),
+                CMD_PROGRAM => self.program_bits.push(bit),
+                CMD_CONFIG => self.config_bits.push(bit),
+                _ => {}
             }
         }
         // Read clock rising edge: present the next stored bit on BUSY.
@@ -170,10 +176,10 @@ impl Transport for SimulatorTransport {
 
 impl SimulatorTransport {
     fn store(&self) -> &[bool] {
-        if self.last_code == CMD_DATA {
-            &self.data_bits
-        } else {
-            &self.program_bits
+        match self.last_code {
+            CMD_DATA => &self.data_bits,
+            CMD_CONFIG => &self.config_bits,
+            _ => &self.program_bits,
         }
     }
 }

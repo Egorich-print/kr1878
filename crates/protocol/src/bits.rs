@@ -53,13 +53,13 @@ pub fn write_bits(t: &mut dyn Transport, n: u8, value: u16, timing: &Timing) -> 
     if n == 0 || n > 16 {
         return Err(Error::Library(format!("invalid bit count {n}")));
     }
-    t.write_control(CONTROL_IDLE)?;
     wait_ack(t, true)?;
     for i in (0..n).rev() {
         let bit = ((value >> i) & 1) as u8;
-        // Lower the write clock first.
+        // Lower the write clock first; the loop's first control write drives
+        // the whole control state. No leading idle write is emitted: from an
+        // all-off (idle_off) state a leading IDLE would synthesize a WCLK edge.
         let mut out = CONTROL_IDLE & !CONTROL_WCLK;
-        t.write_control(out)?;
         // Place the data level on C0 while the clock is low.
         out &= !CONTROL_DATA;
         out |= if bit != 0 { CONTROL_DATA } else { 0 };
@@ -83,7 +83,6 @@ pub fn read_bits(t: &mut dyn Transport, n: u8, timing: &Timing) -> Result<u16> {
     if n == 0 || n > 16 {
         return Err(Error::Library(format!("invalid bit count {n}")));
     }
-    t.write_control(CONTROL_IDLE)?;
     let mut value: u16 = 0;
     for i in (0..n).rev() {
         // Lower the read clock, then raise it to clock out the next bit.

@@ -7,9 +7,56 @@ use crate::backend::Backend;
 use crate::error::Result;
 use crate::memory::{MemoryImage, PROGRAM_WORDS};
 
+/// Which write phases to run (e.g. driven by an `e03prg.arp` file).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WriteOptions {
+    /// Perform the erase pulse before writing.
+    pub erase: bool,
+    /// Program the command EEPROM.
+    pub program: bool,
+    /// Program the data EEPROM.
+    pub data: bool,
+    /// Program the OSC/config channel.
+    pub config: bool,
+}
+
+impl Default for WriteOptions {
+    fn default() -> Self {
+        WriteOptions {
+            erase: true,
+            program: true,
+            data: true,
+            config: true,
+        }
+    }
+}
+
 /// Story of a program (write) combined with an automatic read-back verify.
 pub fn program(backend: &mut dyn Backend, image: &MemoryImage) -> Result<bool> {
-    backend.program(image)
+    program_with(backend, image, &WriteOptions::default())
+}
+
+/// Program with explicit phase selection (mirrors the `.arp` phase gates).
+pub fn program_with(
+    backend: &mut dyn Backend,
+    image: &MemoryImage,
+    opts: &WriteOptions,
+) -> Result<bool> {
+    if opts.erase {
+        backend.erase()?;
+    }
+    if opts.program {
+        backend.write_program(&image.program)?;
+    }
+    if opts.data {
+        backend.write_data(&image.data)?;
+    }
+    if opts.config
+        && let Some(cfg) = image.config
+    {
+        backend.write_config(cfg)?;
+    }
+    verify_with(backend, image, opts)
 }
 
 /// Read the full microcontroller state into an image.
@@ -20,19 +67,37 @@ pub fn read(backend: &mut dyn Backend) -> Result<MemoryImage> {
     backend.read_program(&mut prog)?;
     img.program = prog;
     img.data = backend.read_data()?;
+    img.config = backend.read_config()?;
     Ok(img)
 }
 
 /// Independently verify an image against the device.
 pub fn verify(backend: &mut dyn Backend, image: &MemoryImage) -> Result<bool> {
-    let mut read_back = vec![0u16; PROGRAM_WORDS];
-    backend.read_program(&mut read_back)?;
-    let img_read = MemoryImage {
-        program: read_back,
-        ..image.clone()
-    };
-    let data_ok = backend.read_data()? == image.data;
-    Ok(img_read.program == image.program && data_ok)
+    verify_with(backend, image, &WriteOptions::default())
+}
+
+/// Verify only the phases enabled in `opts` (mirrors the `.arp` phase gates).
+pub fn verify_with(
+    backend: &mut dyn Backend,
+    image: &MemoryImage,
+    opts: &WriteOptions,
+) -> Result<bool> {
+    let mut ok = true;
+    if opts.program {
+        let mut read_back = vec![0u16; PROGRAM_WORDS];
+        backend.read_program(&mut read_back)?;
+        ok &= read_back == image.program;
+    }
+    if opts.data {
+        ok &= backend.read_data()? == image.data;
+    }
+    if opts.config {
+        ok &= match image.config {
+            Some(cfg) => backend.read_config()? == Some(cfg),
+            None => true,
+        };
+    }
+    Ok(ok)
 }
 
 #[cfg(test)]
