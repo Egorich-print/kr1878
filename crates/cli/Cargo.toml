@@ -1,0 +1,20 @@
+[package]
+name = "kr1878"
+description = "CLI for the KR1878VE1 toolchain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "kr1878"
+path = "src/main.rs"
+
+[dependencies]
+kr1878-core = { path = "../core" }
+kr1878-assembler = { path = "../assembler" }
+kr1878-file-format = { path = "../file-format" }
+kr1878-programmer = { path = "../programmer" }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tracing = { workspace = true }
+tracing-subscriber = "0.3"

@@ -1,0 +1,10 @@
+[package]
+name = "kr1878-file-format"
+description = "Readers/writers for .sav/.dat/.arp/.lst/.sym files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kr1878-core = { path = "../core" }
+thiserror.workspace = true

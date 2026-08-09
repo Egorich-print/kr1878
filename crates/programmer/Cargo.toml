@@ -1,0 +1,15 @@
+[package]
+name = "kr1878-programmer"
+description = "ProgrammerBackend implementations: LPT bit-bang, serial/USB bridge, mock"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kr1878-core = { path = "../core" }
+kr1878-protocol = { path = "../protocol" }
+thiserror.workspace = true
+tracing.workspace = true
+
+[target.'cfg(all(any(target_os = "linux", target_os = "freebsd"), target_arch = "x86_64"))'.dependencies]
+libc = "0.2"

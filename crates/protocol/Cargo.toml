@@ -1,0 +1,9 @@
+[package]
+name = "kr1878-protocol"
+description = "Low-level bit-bang protocol used by the KR1878VE1 programmer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true

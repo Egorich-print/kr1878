@@ -1,0 +1,11 @@
+[package]
+name = "kr1878-assembler"
+description = "TESSA assembler for the KR1878VE1 (source .mic -> memory image/list/symbols)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kr1878-core = { path = "../core" }
+thiserror.workspace = true
+tracing.workspace = true
