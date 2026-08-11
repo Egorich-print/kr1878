@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added (README)
+- Полностью переписан `README.md` с красивой вёрсткой: бейджи (Rust/Tauri/MIT/
+  tests/clippy), иконки возможностей, таблицы, актуальное число тестов (112),
+  команды `run`/`ports`, оба blink-примера, навигация по документации.
+
 ### Added (CPU simulator)
 - **`kr1878-core::cpu`** — исполняющий CPU-симулятор ядра ТЕСЕЙ:
   - `Instruction::decode` — декодер, точный инверс `encode` (round-trip всех 55
