@@ -96,6 +96,25 @@ impl Expr {
             Paren(inner) => un(inner),
         }
     }
+
+    /// Replace every `Here` (`.`) node with its resolved program-counter value,
+    /// so an expression tree may be evaluated when `.` is in scope. Used by the
+    /// assembler before `eval`; the parser emits `Here`, never `Symbol(".")`.
+    pub fn with_here(&self, pc: i64) -> Expr {
+        use Expr::*;
+        match self {
+            Number(n) => Number(*n),
+            Symbol(s) => Symbol(s.clone()),
+            Here => Number(pc),
+            Unary { negate, not, inner } => Unary {
+                negate: *negate,
+                not: *not,
+                inner: Box::new(inner.with_here(pc)),
+            },
+            Binary(op, l, r) => Binary(*op, Box::new(l.with_here(pc)), Box::new(r.with_here(pc))),
+            Paren(inner) => Paren(Box::new(inner.with_here(pc))),
+        }
+    }
 }
 
 // ---- Parser ----

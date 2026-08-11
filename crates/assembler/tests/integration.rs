@@ -102,3 +102,48 @@ fn inc_then_even_pads() {
     let o = img("nop\nnop\n.even\nnop\n");
     assert_eq!(word(&o, 2), 0x0000);
 }
+
+#[test]
+fn listing_shows_real_encoded_words() {
+    let o = img("movl %a0,0FFh\nnop\n.byte 7fh\n");
+    let w0 = word(&o, 0);
+    let w2 = word(&o, 2);
+    assert_eq!(w2, 0x007F);
+    // Listing must carry the real encoded words, not zero placeholders.
+    let listing = o.listing.to_lowercase();
+    assert!(
+        listing.contains(&format!("{w0:04x}")),
+        "listing missing encoded movl word: {listing}"
+    );
+    assert!(
+        listing.contains(&format!("{w2:04x}")),
+        "listing missing .byte value: {listing}"
+    );
+    // And it must not show a bare `0000` row for the encoded instructions.
+    assert!(
+        !listing.starts_with("0000: 0000"),
+        "zero placeholder leaked: {listing}"
+    );
+}
+
+#[test]
+fn current_address_dot_resolves() {
+    // `.` is the current pc; used both as expression operand and with `.=`.
+    let o = img("nop\njmp .+1\n");
+    // nop@0, jmp@1 targeting 1+1=2.
+    assert_eq!(word(&o, 1) & 0x03FF, 2);
+}
+
+#[test]
+fn setpc_directive_moves_cursor() {
+    let o = img("nop\n.=\t4\nmovl %a0,1\n");
+    // nop@0, cursor moved to 4, movl@4.
+    assert_eq!(word(&o, 3), 0xFFFF); // skip stays erased
+    assert_eq!((word(&o, 4) >> 13), 0b010);
+}
+
+#[test]
+fn byte_of_dot_uses_current_pc() {
+    let o = img(".byte .\n");
+    assert_eq!(word(&o, 0), 0x0000);
+}

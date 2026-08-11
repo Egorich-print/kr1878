@@ -64,15 +64,18 @@ fn make_backend(kind: BackendKind, sim_state: Option<&str>) -> Result<Box<dyn Ba
     })
 }
 
+/// A connected backend plus its human-readable identity for the UI.
+pub struct Connection {
+    pub backend: Box<dyn Backend>,
+    pub label: String,
+}
+
 /// Build the live backend the app will operate on for the whole session.
-pub fn connect(kind: BackendKind, sim_state: Option<&str>) -> Result<String, String> {
+pub fn connect(kind: BackendKind, sim_state: Option<&str>) -> Result<Connection, String> {
     let mut backend = make_backend(kind, sim_state)?;
     let id = backend.identify().map_err(|e| e.to_string())?;
-    Ok(format!(
-        "{} ({})",
-        id.name,
-        id.revision.as_deref().unwrap_or("n/a")
-    ))
+    let label = format!("{} ({})", id.name, id.revision.as_deref().unwrap_or("n/a"));
+    Ok(Connection { backend, label })
 }
 
 /// Assembly result handed back to the UI.
@@ -232,10 +235,8 @@ mod tests {
 
     #[test]
     fn connect_reports_backend_identity() {
-        assert!(connect(BackendKind::Mock, None)
-            .unwrap()
-            .to_lowercase()
-            .contains("mock"));
+        let mock = connect(BackendKind::Mock, None).unwrap();
+        assert!(mock.label.to_lowercase().contains("mock"));
         assert!(connect(BackendKind::Sim, None).is_ok());
     }
 }

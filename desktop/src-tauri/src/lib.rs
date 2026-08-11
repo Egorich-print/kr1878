@@ -12,6 +12,17 @@ use tauri::State;
 /// mirroring a real programmer attached to the same chip.
 struct AppBackend(Mutex<Box<dyn kr1878_core::backend::Backend>>);
 
+impl AppBackend {
+    fn lock(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, Box<dyn kr1878_core::backend::Backend>>, CommandError>
+    {
+        self.0
+            .lock()
+            .map_err(|_| CommandError::new("internal error: backend lock poisoned"))
+    }
+}
+
 #[derive(serde::Serialize)]
 struct CommandError {
     message: String,
@@ -40,26 +51,36 @@ fn assemble(source: String) -> CmdResult<ops::AssembleResult> {
     ops::assemble(&source).map_err(CommandError::new)
 }
 
+/// Connect the selected backend; replaces the session backend in the managed
+/// state so all subsequent program/verify/read calls target this device.
 #[tauri::command]
-fn connect(backend: BackendKind, sim_state: Option<String>) -> CmdResult<String> {
-    ops::connect(backend, sim_state.as_deref()).map_err(CommandError::new)
+fn connect(
+    state: State<'_, AppBackend>,
+    backend: BackendKind,
+    sim_state: Option<String>,
+) -> CmdResult<String> {
+    let conn = ops::connect(backend, sim_state.as_deref()).map_err(CommandError::new)?;
+    let label = conn.label.clone();
+    let mut slot = state.lock()?;
+    *slot = conn.backend;
+    Ok(label)
 }
 
 #[tauri::command]
 fn program(state: State<'_, AppBackend>, spec: SessionSpec) -> CmdResult<bool> {
-    let mut backend = state.0.lock().expect("backend lock poisoned");
+    let mut backend = state.lock()?;
     ops::program(&mut **backend, &spec).map_err(CommandError::new)
 }
 
 #[tauri::command]
 fn verify(state: State<'_, AppBackend>, spec: SessionSpec) -> CmdResult<bool> {
-    let mut backend = state.0.lock().expect("backend lock poisoned");
+    let mut backend = state.lock()?;
     ops::verify(&mut **backend, &spec).map_err(CommandError::new)
 }
 
 #[tauri::command]
 fn read(state: State<'_, AppBackend>) -> CmdResult<ops::ImageContents> {
-    let mut backend = state.0.lock().expect("backend lock poisoned");
+    let mut backend = state.lock()?;
     ops::read(&mut **backend).map_err(CommandError::new)
 }
 

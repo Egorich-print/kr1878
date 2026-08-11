@@ -119,6 +119,14 @@ impl Backend for LptBackend {
         WireBackend::new(&mut self.transport).read_data()
     }
 
+    fn write_config(&mut self, value: u8) -> kr1878_core::error::Result<()> {
+        WireBackend::new(&mut self.transport).write_config(value)
+    }
+
+    fn read_config(&mut self) -> kr1878_core::error::Result<Option<u8>> {
+        WireBackend::new(&mut self.transport).read_config()
+    }
+
     fn program(&mut self, image: &MemoryImage) -> kr1878_core::error::Result<bool> {
         WireBackend::new(&mut self.transport).program(image)
     }

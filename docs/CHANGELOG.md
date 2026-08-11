@@ -79,6 +79,30 @@
 - Тесты: 7 юнит-тестов в `ops.rs` (assemble, mock/sim round-trip, mismatch,
   identity, connect); workspace по-прежнему **77** зелёных.
 
+### Fixed (Block 4 — по результатам аудита)
+- **Ассемблер — паника на `.`**: `Expr::Here` (`jmp .+1`, `.byte .`) уходил в
+  `unreachable!` в `expr.rs` → panic вместо диагностики. Добавлен `Expr::with_here(pc)`,
+  `.` подставляется до eval (`eval_expr`). Новые тесты: `.`-выражения, `.byte .`.
+- **Ассемблер — листинг показывал `0000`** вместо реальных слов: `emit_words`
+  возвращал нули-заглушки. Теперь в листинг попадают фактически закодированные
+  слова (`process` возвращает реальные `u16`). Тест `listing_shows_real_encoded_words`.
+- **Ассемблер — `.=` не работал**: лексер выдаёт `Token::Equal` (не символ), поэтому
+  директива `.= N` падала с «expected directive name». Разбор `.=` вынесен на уровень
+  `Token::Dot + Token::Equal`. Тест `setpc_directive_moves_cursor`.
+- **Desktop — `connect` не подключал**: команда создавала backend локально и
+  выбрасывала; все program/verify/read работали с `Mock`. Теперь `connect` заменяет
+  backend в Tauri-managed state (`AppBackend`), выбор Sim/LPT и `.sim`-файл реально
+  используются. Lock-poisoning обрабатывается как ошибка, а не `expect()`-паника.
+- **LPT — конфиг не программировался**: `LptBackend` наследовал no-op
+  `write_config`/`read_config`, поэтому `--osc` молча игнорировался на железе.
+  Добавлено делегирование в `WireBackend`.
+- **Desktop UI**: обработка ошибок `invoke` (try/catch, красный error-блок),
+  busy-индикация и блокировка кнопок, «исходник изменён — пересоберите»,
+  требование «сначала подключите устройство», валидация OSC (hex 00–FF),
+  дамп с адресами + секция Data EEPROM и config, кнопка «Загрузить демо»,
+  сброс состояния при смене бэкенда, русский интерфейс и заголовок окна.
+- Тесты: workspace **81** зелёный (было 77; +4 в assembler).
+
 ## Earlier
 - `core`: ISA (isa/operand), memory, ops, `Backend` trait — 12 тестов.
 - `file-format`: `.sav`/`.dat`/`.arp` — 12 тестов.

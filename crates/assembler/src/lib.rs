@@ -154,45 +154,38 @@ fn process(
 
     let npc = apply(&class, pc, syms, span)?;
 
-    if !defining {
-        if let Some(img) = img {
-            match &class {
-                Class::Data { wide, items } => {
-                    for (k, item) in items.iter().enumerate() {
-                        let v = eval_expr(item, pc, syms, span)?;
-                        let w = if *wide { v as u16 } else { (v & 0xFF) as u16 };
-                        img.set_program_word((pc as u16).saturating_add(k as u16), w)?;
-                    }
-                }
-                Class::Bpt => {
-                    img.set_program_word(pc as u16, 0x0000)?;
-                }
-                Class::Insn { mnem, ops } => {
-                    let w = encode_word(mnem, ops, pc, syms, span)?;
-                    img.set_program_word(pc as u16, w)?;
-                }
-                _ => {}
-            }
-        }
-        let _ = src;
-    }
-
     let emitted: Vec<u16> = if defining {
         Vec::new()
+    } else if let Some(img) = img {
+        // Emit real words so the listing shows what was actually encoded.
+        match &class {
+            Class::Data { wide, items } => items
+                .iter()
+                .enumerate()
+                .map(|(k, item)| {
+                    let v = eval_expr(item, pc, syms, span)?;
+                    let w = if *wide { v as u16 } else { (v & 0xFF) as u16 };
+                    img.set_program_word((pc as u16).saturating_add(k as u16), w)?;
+                    Ok(w)
+                })
+                .collect::<Result<Vec<u16>>>()?,
+            Class::Bpt => {
+                let w = 0x0000;
+                img.set_program_word(pc as u16, w)?;
+                vec![w]
+            }
+            Class::Insn { mnem, ops } => {
+                let w = encode_word(mnem, ops, pc, syms, span)?;
+                img.set_program_word(pc as u16, w)?;
+                vec![w]
+            }
+            _ => Vec::new(),
+        }
     } else {
-        emit_words(&class)
+        Vec::new()
     };
+    let _ = src;
     Ok((emitted, npc))
-}
-
-/// Words this statement writes (for listing at pass 2).
-fn emit_words(class: &Class) -> Vec<u16> {
-    match class {
-        Class::Data { items, .. } => vec![0; items.len()],
-        Class::Bpt => vec![0],
-        Class::Insn { .. } => vec![0],
-        _ => Vec::new(),
-    }
 }
 
 /// Compute the next pc for a statement.
@@ -223,7 +216,9 @@ fn eval_expr(e: &expr::Expr, pc: usize, syms: &Symbols, span: Span) -> Result<i6
             syms.resolve(name, syms.current_scope())
         }
     };
-    e.eval(&r, span)?
+    // `.` is parsed as `Expr::Here`; substitute it with the current pc first.
+    e.with_here(pc as i64)
+        .eval(&r, span)?
         .ok_or_else(|| AsmError::new(span, "undefined symbol in expression"))
 }
 
@@ -297,6 +292,17 @@ fn classify(tk: &[Token], span: Span) -> Result<(Vec<Def>, Class)> {
     match tk.get(i) {
         None | Some(Token::Eof) => Ok((defs, Class::Label)),
         Some(Token::Dot) => {
+            // `.= expr` sets the program counter. The lexer yields `Token::Equal`
+            // (not a symbol), so it is matched here rather than as a directive name.
+            if let Some(Token::Equal) = tk.get(i + 1) {
+                let rest = strip_eof(&tk[i + 2..]);
+                return Ok((
+                    defs,
+                    Class::SetPc {
+                        ex: parse_expr(&rest, span)?,
+                    },
+                ));
+            }
             let dir = match tk.get(i + 1) {
                 Some(Token::Sym(s)) => s.to_lowercase(),
                 _ => return Err(AsmError::new(span, "expected directive name after `.`")),
@@ -312,9 +318,6 @@ fn classify(tk: &[Token], span: Span) -> Result<(Vec<Def>, Class)> {
                     items: expr_list(&rest, span)?,
                 },
                 "even" => Class::Even,
-                "=" => Class::SetPc {
-                    ex: parse_expr(&rest, span)?,
-                },
                 "bpt" => Class::Bpt,
                 "end" | "list" => Class::Pass,
                 other => return Err(AsmError::new(span, format!("unknown directive `.{other}`"))),
