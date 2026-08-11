@@ -19,7 +19,7 @@ use kr1878_core::ops::{self, WriteOptions};
 use kr1878_file_format::arp as arpfmt;
 use kr1878_file_format::dat as datfmt;
 use kr1878_file_format::sav as savfmt;
-use kr1878_programmer::{LptBackend, MockBackend};
+use kr1878_programmer::{LptBackend, MockBackend, SimBackend};
 
 #[derive(Parser)]
 #[command(name = "kr1878", about = "KR1878VE1 toolchain CLI")]
@@ -30,7 +30,11 @@ struct Cli {
 
 #[derive(Clone, Copy, ValueEnum)]
 enum BackendKind {
+    /// In-memory backend that skips the protocol layer (test/CI).
     Mock,
+    /// Real wire protocol against a simulated chip (no hardware).
+    Sim,
+    /// Physical parallel-port programmer.
     Lpt,
 }
 
@@ -56,8 +60,11 @@ enum Cmd {
         /// Output `.dat` (default: none).
         #[arg(short, long)]
         dat: Option<PathBuf>,
+        /// Simulated-device state file (`.sim`); `--backend sim` only.
+        #[arg(long)]
+        sim_state: Option<PathBuf>,
     },
-    /// Write a `.sav` (optionally `.dat`) image to the device.
+    /// Write a `.sav` or `.mic` (optionally `.dat`) image to the device.
     Write {
         image: PathBuf,
         #[arg(short, long)]
@@ -73,8 +80,11 @@ enum Cmd {
         /// Skip the erase phase.
         #[arg(long)]
         no_erase: bool,
+        /// Simulated-device state file (`.sim`); `--backend sim` only.
+        #[arg(long)]
+        sim_state: Option<PathBuf>,
     },
-    /// Verify the device against a `.sav` (optionally `.dat`) image.
+    /// Verify the device against a `.sav` or `.mic` (optionally `.dat`) image.
     Verify {
         image: PathBuf,
         #[arg(short, long)]
@@ -87,13 +97,21 @@ enum Cmd {
         /// Program `e03prg.arp` (phase gates).
         #[arg(long)]
         arp: Option<PathBuf>,
+        /// Simulated-device state file (`.sim`); `--backend sim` only.
+        #[arg(long)]
+        sim_state: Option<PathBuf>,
     },
 }
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::Assemble { source, out, dat } => cmd_assemble(source, out, dat),
-        Cmd::Read { backend, out, dat } => cmd_read(backend, out, dat),
+        Cmd::Read {
+            backend,
+            out,
+            dat,
+            sim_state,
+        } => cmd_read(backend, out, dat, sim_state),
         Cmd::Write {
             image,
             dat,
@@ -101,21 +119,30 @@ fn main() -> Result<()> {
             osc,
             arp,
             no_erase,
-        } => cmd_write(image, dat, backend, osc, arp, no_erase),
+            sim_state,
+        } => cmd_write(image, dat, backend, osc, arp, no_erase, sim_state),
         Cmd::Verify {
             image,
             dat,
             backend,
             osc,
             arp,
-        } => cmd_verify(image, dat, backend, osc, arp),
+            sim_state,
+        } => cmd_verify(image, dat, backend, osc, arp, sim_state),
     }
 }
 
-fn make_backend(kind: BackendKind) -> Box<dyn Backend> {
+fn make_backend(kind: BackendKind, state: Option<&Path>) -> Result<Box<dyn Backend>> {
     match kind {
-        BackendKind::Mock => Box::new(MockBackend::new()),
-        BackendKind::Lpt => Box::new(LptBackend::new()),
+        BackendKind::Mock => Ok(Box::new(MockBackend::new())),
+        BackendKind::Lpt => Ok(Box::new(LptBackend::new())),
+        BackendKind::Sim => {
+            let backend = match state {
+                Some(p) => SimBackend::load_or_new(p).context("load simulated chip state")?,
+                None => SimBackend::new(),
+            };
+            Ok(Box::new(backend))
+        }
     }
 }
 
@@ -150,8 +177,13 @@ fn cmd_assemble(source: PathBuf, out: Option<PathBuf>, dat: Option<PathBuf>) -> 
     Ok(())
 }
 
-fn cmd_read(backend: BackendKind, out: Option<PathBuf>, dat: Option<PathBuf>) -> Result<()> {
-    let mut b = make_backend(backend);
+fn cmd_read(
+    backend: BackendKind,
+    out: Option<PathBuf>,
+    dat: Option<PathBuf>,
+    sim_state: Option<PathBuf>,
+) -> Result<()> {
+    let mut b = make_backend(backend, sim_state.as_deref())?;
     let id = b.identify()?;
     println!(
         "device: {} ({})",
@@ -179,8 +211,9 @@ fn cmd_write(
     osc: Option<u8>,
     arp: Option<PathBuf>,
     no_erase: bool,
+    sim_state: Option<PathBuf>,
 ) -> Result<()> {
-    let mut b = make_backend(backend);
+    let mut b = make_backend(backend, sim_state.as_deref())?;
     let mut img = load_image(&image, dat.as_deref())?;
     img.config = osc.or(img.config);
     let mut opts = load_arp(arp.as_deref())?;
@@ -201,8 +234,9 @@ fn cmd_verify(
     backend: BackendKind,
     osc: Option<u8>,
     arp: Option<PathBuf>,
+    sim_state: Option<PathBuf>,
 ) -> Result<()> {
-    let mut b = make_backend(backend);
+    let mut b = make_backend(backend, sim_state.as_deref())?;
     let mut img = load_image(&image, dat.as_deref())?;
     img.config = osc.or(img.config);
     let opts = load_arp(arp.as_deref())?;
@@ -215,9 +249,20 @@ fn cmd_verify(
 }
 
 fn load_image(sav: &Path, dat: Option<&Path>) -> Result<MemoryImage> {
-    let mut f = BufReader::new(File::open(sav).with_context(|| format!("open {}", sav.display()))?);
-    let words = savfmt::read_sav(&mut f)?;
-    let mut img = MemoryImage::from_program(&words)?;
+    let mut img = match sav.extension().and_then(|e| e.to_str()) {
+        Some("mic") => {
+            let text = std::fs::read_to_string(sav)
+                .with_context(|| format!("cannot read {}", sav.display()))?;
+            let result = kr1878_assembler::assemble(&text).context("assembly failed")?;
+            result.image
+        }
+        _ => {
+            let mut f =
+                BufReader::new(File::open(sav).with_context(|| format!("open {}", sav.display()))?);
+            let words = savfmt::read_sav(&mut f)?;
+            MemoryImage::from_program(&words)?
+        }
+    };
     if let Some(d) = dat {
         let text = std::fs::read_to_string(d).with_context(|| format!("open {}", d.display()))?;
         img.data = datfmt::parse_dat(&text)?;

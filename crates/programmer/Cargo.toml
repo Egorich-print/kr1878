@@ -5,9 +5,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Exposes a fully simulated device backend (`SimBackend`) that runs the real
+# `WireBackend -> protocol::Device > transport` path with no hardware attached.
+# Used by the CLI (`--backend sim`) for verification in CI and demos.
+sim = ["kr1878-protocol/testutil"]
+
 [dependencies]
 kr1878-core = { path = "../core" }
 kr1878-protocol = { path = "../protocol" }
+kr1878-file-format = { path = "../file-format" }
 thiserror.workspace = true
 tracing.workspace = true
 

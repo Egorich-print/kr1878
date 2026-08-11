@@ -8,9 +8,15 @@ pub mod lpt;
 pub mod mock;
 pub mod wire;
 
+#[cfg(feature = "sim")]
+pub mod sim;
+
 pub use lpt::{DEFAULT_LPT_BASE, LptBackend, LptTransport};
 pub use mock::MockBackend;
 pub use wire::WireBackend;
+
+#[cfg(feature = "sim")]
+pub use sim::SimBackend;
 
 /// Convenience re-export: a [`Backend`] fully in memory.
 pub use kr1878_core::backend::Backend;

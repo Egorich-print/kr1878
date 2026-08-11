@@ -59,11 +59,11 @@ ADR-реестр: `docs/adr/`. Открытые решения фиксирую�
 | Компонент | Статус |
 |-----------|--------|
 | `core` (ISA кодирование, память, ops, backend trait) | ✅ реализован, 14 тестов |
-| `file-format` (`.sav`, `.dat`, `.arp`) | ✅ реализован, 12 тестов |
+| `file-format` (`.sav`, `.dat`, `.arp`, `.sim`) | ✅ реализован, 16 тестов |
 | `assembler` (`kr1878-assembler`) | ✅ двухпроходный, 16 тестов |
 | `protocol` (`kr1878-protocol`) | ✅ битбанг + драйвер `Device`, 16 тестов, канал OSC/config, `testutil` (feature) с полярностной моделью |
-| `programmer` (`kr1878-programmer`) | ✅ LPT/mock/wire backends, 12 тестов (вкл. WireBackend e2e по реальному protocol-пути) |
-| `cli` (`kr1878`) | ✅ assemble/read/write/verify (clap; `--osc`/`--arp`) |
+| `programmer` (`kr1878-programmer`) | ✅ LPT/mock/sim/wire backends, 15 тестов (вкл. WireBackend e2e и SimBackend с `.sim`-персистентностью) |
+| `cli` (`kr1878`) | ✅ assemble/read/write/verify (clap; `--osc`/`--arp`/`--backend sim`/`--sim-state`), 3 e2e теста |
 
 **Стек реализованного ассемблера:**
 - Препроцессор: `#define`, `#include` (через loader), `.macro/.endmacro` с подстановкой аргументов и авто-переименованием `@N`, `.if/.else/.endif`.
@@ -100,24 +100,27 @@ ADR-реестр: `docs/adr/`. Открытые решения фиксирую�
 11. ✅ Интеграционное покрытие `WireBackend` по реальному протокольному пути
     (`protocol::testutil` под feature; polarity-адаптер; `erase → write → read → verify` без `MockBackend`).
     LPT-полярность смоделирована; **проверка на железе остаётся TODO** (ADR-004 §2).
-12. 🔜 Desktop-приложение (Tauri/Svelte) тонкий UI.
-13. 🔜 Документация пользователя + инструкция.
+12. ✅ CLI productization: `--backend sim` (реальный protocol-путь без железа) +
+    `--sim-state FILE` (состояние переживает запуски через `.sim`-снапшот) +
+    авто-ассемблирование `.mic` в `write`/`verify`; 3 e2e-теста бинаря.
+13. 🔜 Desktop-приложение (Tauri/Svelte) тонкий UI.
+14. 🔜 Документация пользователя + инструкция.
 
 > Статус этапа: **CLI этапа 3 готов, остался desktop-UI (этап 4).**
-> Блоки 1–3 (ADR-004): lint hygiene ✅ · protocol completion ✅ · WireBackend coverage ✅.
+> Блоки 1–3 (ADR-004): lint hygiene ✅ · protocol completion ✅ · WireBackend coverage ✅ · CLI productization ✅.
 
 ---
 
 ## 8. Как проверить текущее состояние
 
 ```
-cargo test --workspace              # юнит + интеграционные тесты (67)
+cargo test --workspace              # юнит + интеграционные тесты (77)
 cargo build --workspace             # сборка
 cargo clippy --workspace --all-targets -- -D warnings  # обязателен
 cargo fmt --all -- --check          # обязателен
 ```
 
-> Блоки 1–3 (ADR-004): lint hygiene ✅ · protocol completion ✅ · WireBackend coverage ✅ · CLI/UI.
+> Блоки 1–3 (ADR-004): lint hygiene ✅ · protocol completion ✅ · WireBackend coverage ✅ · CLI productization ✅ · UI 🔜.
 
 ---
 

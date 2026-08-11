@@ -31,7 +31,7 @@
 - `kr1878` CLI: `write/verify --osc N --arp file`; `--no-erase`; `read` печатает OSC-байт.
 - Тесты: 16 (protocol), 14 (core), 7 (programmer), bulk read 1K слов.
 
-### Added (Block 3 — WireBackend integration coverage)
+### Added (Block 2 — WireBackend integration coverage)
 - `kr1878-protocol`: `testutil` вынесен под feature `testutil`
   (`#[cfg(any(test, feature = "testutil"))]`), `SimulatorTransport`/`RecordingTransport`
   доступны downstream-крейтам.
@@ -44,6 +44,20 @@
   - полный сеанс поверх `InvertedStatusTransport::inverted(SimulatorTransport)`.
 - Тесты workspace: 67 зелёных (было 62; +5 интеграционных в `programmer`).
 - TODO: валидация LPT-полярности/таймингов на железе (ADR-004 §2).
+
+### Added (Block 3 — CLI productization)
+- `kr1878-file-format`: `.sim`-снапшот состояния устройства (`KRSI` magic, 1024 words
+  + data EEPROM + config; `read_sim`/`write_sim`/`write_sim_file`, 4 теста).
+- `kr1878-programmer`: `SimBackend` под feature `sim` — полный протокольный путь
+  (`WireBackend` → `protocol::Device` → `SimulatorTransport`) без железа;
+  персистентность через `.sim`-файл (`load_or_new`, авто-сохранение при записи).
+- `kr1878` CLI:
+  - `--backend sim` (симулированный чип; реальный протокол, в отличие от Mock);
+  - `--sim-state FILE` в `read`/`write`/`verify` — состояние переживает запуски;
+  - `write`/`verify` принимают `.mic` напрямую (авто-ассемблирование).
+- Тесты CLI: `tests/cli.rs` (3) — assemble→.sav, cross-process write→verify
+  round-trip с `.sim`-state (вкл. mismatch), read dump config + program.
+- Тесты workspace: **77** зелёных (было 67; +4 `.sim`, +3 SimBackend, +3 CLI).
 
 ## Earlier
 - `core`: ISA (isa/operand), memory, ops, `Backend` trait — 12 тестов.

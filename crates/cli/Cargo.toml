@@ -13,7 +13,7 @@ path = "src/main.rs"
 kr1878-core = { path = "../core" }
 kr1878-assembler = { path = "../assembler" }
 kr1878-file-format = { path = "../file-format" }
-kr1878-programmer = { path = "../programmer" }
+kr1878-programmer = { path = "../programmer", features = ["sim"] }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 tracing = { workspace = true }

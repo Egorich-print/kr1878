@@ -166,6 +166,7 @@ name = "kr1878-programmer"
 version = "0.1.0"
 dependencies = [
  "kr1878-core",
+ "kr1878-file-format",
  "kr1878-protocol",
  "libc",
  "thiserror",
