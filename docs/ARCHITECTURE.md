@@ -42,6 +42,7 @@ kr1878/
 ├── docs/
 │   ├── PROJECT_STATE.md
 │   ├── ARCHITECTURE.md
+│   ├── ISA_REFERENCE.md
 │   ├── REVERSE_ENGINEERING.md
 │   ├── FILE_FORMATS.md
 │   ├── HARDWARE_PROTOCOL.md

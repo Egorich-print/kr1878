@@ -75,15 +75,25 @@ npm run tauri build        # релизная сборка
 
 ```
 crates/
-  core/        # модель памяти, типаж Backend, операции program/verify/read
+  core/        # модель памяти, ISA-кодирование, типаж Backend, операции
   protocol/    # нижний протокольный слой (битбанг, CRC, Device, симулятор)
   assembler/   # .mic -> MemoryImage + листинг + символы
-  programmer/  # бэкенды: Mock / Sim / LPT
+  programmer/  # бэкенды: Mock / Sim / LPT / USB
   file-format/ # .sav, .dat, .arp, .sim
   cli/         # консольный интерфейс
 desktop/       # Tauri 2 + SvelteKit UI
-docs/          # исследование, стандарты, ADR, форматы файлов
+docs/          # ISA-справочник, исследование, стандарты, ADR, форматы файлов
 ```
+
+## Документация
+
+- [`docs/ISA_REFERENCE.md`](docs/ISA_REFERENCE.md) — полный справочник по
+  системе команд КР1878ВЕ1 (кодировки, семантика, директивы ассемблера),
+  составленный по собственным исследованиям (факты, не охраняемые АП).
+- `docs/REVERSE_ENGINEERING.md` — как была восстановлена ISA и протоколы.
+- `docs/HARDWARE_PROTOCOL.md` — протоколы программаторов (LPT, USB).
+- `docs/FILE_FORMATS.md` — форматы файлов.
+- `docs/adr/` — реестр архитектурных решений.
 
 ## Лицензия
 
