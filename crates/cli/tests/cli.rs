@@ -157,3 +157,45 @@ fn read_dumps_persisted_program_and_config() {
     assert!(stdout.contains("osc config = 0x05"), "stdout: {stdout}");
     assert!(dump.exists());
 }
+
+#[test]
+fn usb_read_reports_no_readback() {
+    let out = run(&["read", "--backend", "usb"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("no read-back"), "stderr: {stderr}");
+}
+
+#[test]
+fn usb_verify_reports_no_readback() {
+    let out = run(&["verify", "x.sav", "--backend", "usb"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("no read-back"), "stderr: {stderr}");
+}
+
+#[test]
+fn usb_write_without_port_reports_port_required() {
+    let dir = tmp_dir();
+    let mic = dir.join("demo.mic");
+    write(&mic, DEMO_MIC);
+    let out = run(&["write", mic.to_str().unwrap(), "--backend", "usb"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("requires `--port"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn ports_command_lists_or_reports_none() {
+    let out = run(&["ports"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Either a list of ports or a "no ports" message; never an error.
+    assert!(
+        stdout.contains("no serial ports") || stdout.contains("/dev/") || stdout.contains("COM"),
+        "stdout: {stdout}"
+    );
+}

@@ -15,11 +15,13 @@ LPT-программатором, и с полностью симулирова�
 - **Ассемблер `.mic`** — двухпроходная сборка с макросами, `#define`,
   `#include`, условными директивами, локальными и глобальными метками,
   листингом и таблицей символов.
-- **CLI** — `assemble`, `read`, `write`, `verify` поверх трёх бэкендов:
+- **CLI** — `assemble`, `read`, `write`, `verify`, `ports` поверх четырёх бэкендов:
   - `mock` — в памяти (для тестов и CI);
   - `sim` — полный протокольный путь без железа, состояние сохраняется
     в файл `.sim` и переживает запуски;
-  - `lpt` — физический параллельный порт (Linux/FreeBSD, x86-64).
+  - `lpt` — физический параллельный порт (Linux/FreeBSD, x86-64);
+  - `usb` — USB/COM-мост по протоколу официального `Uprg1878.exe`
+    (38400-8N1, блоки 16 байт, подтверждение `'R'`; write-only, без read-back).
 - **Настольное приложение (Tauri 2 + SvelteKit)** — редактор исходников,
   сборка, программирование/проверка/чтение устройства, дамп памяти и
   data EEPROM, выбор бэкенда и файла состояния.
@@ -44,6 +46,21 @@ cargo run -- write demo.mic --backend sim --sim-state chip.sim --osc 3
 cargo run -- verify demo.mic --backend sim --sim-state chip.sim
 cargo run -- read --backend sim --sim-state chip.sim --out dump.sav
 ```
+
+### USB/COM мост (официальный `Uprg1878.exe` протокол)
+
+```sh
+cargo run -- ports                                      # список COM-портов
+cargo run -- write demo.mic --backend usb --port /dev/ttyUSB0 \
+  --gen quartz-high --no-delay
+```
+
+Протокол расшифрован из официального бинаря (см. `docs/HARDWARE_PROTOCOL.md` §7,
+`docs/adr/ADR-005-uprg1878-usb-bridge.md`): UART 38400-8N1, блоки ровно 16 байт,
+подтверждение байтом `'R'` (0x52) на каждый блок; data EEPROM и память программ
+пишутся дважды; конфигурационное слово (RDE/OT1/OT2, биты утроены) передаётся
+отдельным блоком. **Протокол write-only** — read/verify над USB-мостом не
+поддерживаются (нет read-back).
 
 ## Настольное приложение
 

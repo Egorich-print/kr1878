@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use kr1878_core::backend::Backend;
 use kr1878_core::memory::{MemoryImage, DATA_EEPROM_BYTES};
 use kr1878_core::ops::{self, WriteOptions};
-use kr1878_programmer::{LptBackend, MockBackend, SimBackend};
+use kr1878_programmer::{GeneratorMode, LptBackend, MockBackend, SimBackend, UsbBridgeBackend};
 
 /// Backend identifier accepted from the UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,17 +23,24 @@ pub enum BackendKind {
     Mock,
     Sim,
     Lpt,
+    Usb,
 }
 
 impl BackendKind {
     /// All backends the UI may offer.
-    pub const ALL: [BackendKind; 3] = [BackendKind::Mock, BackendKind::Sim, BackendKind::Lpt];
+    pub const ALL: [BackendKind; 4] = [
+        BackendKind::Mock,
+        BackendKind::Sim,
+        BackendKind::Lpt,
+        BackendKind::Usb,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             BackendKind::Mock => "Mock (in-memory)",
             BackendKind::Sim => "Simulated chip",
             BackendKind::Lpt => "LPT programmer",
+            BackendKind::Usb => "USB bridge programmer",
         }
     }
 
@@ -43,11 +50,16 @@ impl BackendKind {
             BackendKind::Mock => "mock",
             BackendKind::Sim => "sim",
             BackendKind::Lpt => "lpt",
+            BackendKind::Usb => "usb",
         }
     }
 }
 
-fn make_backend(kind: BackendKind, sim_state: Option<&str>) -> Result<Box<dyn Backend>, String> {
+fn make_backend(
+    kind: BackendKind,
+    sim_state: Option<&str>,
+    port: Option<&str>,
+) -> Result<Box<dyn Backend>, String> {
     Ok(match kind {
         BackendKind::Mock => Box::new(MockBackend::new()),
         BackendKind::Sim => {
@@ -61,6 +73,14 @@ fn make_backend(kind: BackendKind, sim_state: Option<&str>) -> Result<Box<dyn Ba
             Box::new(backend)
         }
         BackendKind::Lpt => Box::new(LptBackend::new()),
+        BackendKind::Usb => {
+            let port = port.ok_or_else(|| "USB bridge requires a serial port".to_string())?;
+            // Default generator configuration, matching the official tool.
+            Box::new(
+                UsbBridgeBackend::open(port, true, GeneratorMode::QuartzHigh)
+                    .map_err(|e| e.to_string())?,
+            )
+        }
     })
 }
 
@@ -71,8 +91,12 @@ pub struct Connection {
 }
 
 /// Build the live backend the app will operate on for the whole session.
-pub fn connect(kind: BackendKind, sim_state: Option<&str>) -> Result<Connection, String> {
-    let mut backend = make_backend(kind, sim_state)?;
+pub fn connect(
+    kind: BackendKind,
+    sim_state: Option<&str>,
+    port: Option<&str>,
+) -> Result<Connection, String> {
+    let mut backend = make_backend(kind, sim_state, port)?;
     let id = backend.identify().map_err(|e| e.to_string())?;
     let label = format!("{} ({})", id.name, id.revision.as_deref().unwrap_or("n/a"));
     Ok(Connection { backend, label })
@@ -123,6 +147,14 @@ pub fn program(backend: &mut dyn Backend, spec: &SessionSpec) -> Result<bool, St
         config: true,
     };
     ops::program_with(backend, &img, &opts).map_err(|e| e.to_string())
+}
+
+/// Program the device using the backend's own phase sequence (used by the USB
+/// bridge, whose protocol has no read-back: `program()` runs the exact official
+/// block sequence and returns `true` when every block is acknowledged).
+pub fn program_device(backend: &mut dyn Backend, spec: &SessionSpec) -> Result<bool, String> {
+    let img = build_image(spec)?;
+    backend.program(&img).map_err(|e| e.to_string())
 }
 
 /// Verify the device against the session image.
@@ -217,7 +249,7 @@ mod tests {
     fn sim_backend_survives_across_ops_via_shared_backend() {
         // The app keeps one SimBackend for the whole session; a fresh one
         // (as in the CLI per-invocation model) would lose state.
-        let mut boxed = make_backend(BackendKind::Sim, None).unwrap();
+        let mut boxed = make_backend(BackendKind::Sim, None, None).unwrap();
         let backend: &mut dyn Backend = &mut *boxed;
         let mut spec = demo_spec();
         spec.osc = Some(0x02);
@@ -229,14 +261,14 @@ mod tests {
 
     #[test]
     fn mock_read_returns_device_name() {
-        let mut backend = make_backend(BackendKind::Mock, None).unwrap();
+        let mut backend = make_backend(BackendKind::Mock, None, None).unwrap();
         assert!(backend.identify().unwrap().name.contains("mock"));
     }
 
     #[test]
     fn connect_reports_backend_identity() {
-        let mock = connect(BackendKind::Mock, None).unwrap();
+        let mock = connect(BackendKind::Mock, None, None).unwrap();
         assert!(mock.label.to_lowercase().contains("mock"));
-        assert!(connect(BackendKind::Sim, None).is_ok());
+        assert!(connect(BackendKind::Sim, None, None).is_ok());
     }
 }

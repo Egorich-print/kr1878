@@ -10,13 +10,12 @@ use tauri::State;
 /// The live device backend shared across program/verify/read calls, so a
 /// multi-step session (write then verify then read) sees consistent state —
 /// mirroring a real programmer attached to the same chip.
-struct AppBackend(Mutex<Box<dyn kr1878_core::backend::Backend>>);
+type SessionBackend = (BackendKind, Box<dyn kr1878_core::backend::Backend>);
+
+struct AppBackend(Mutex<SessionBackend>);
 
 impl AppBackend {
-    fn lock(
-        &self,
-    ) -> Result<std::sync::MutexGuard<'_, Box<dyn kr1878_core::backend::Backend>>, CommandError>
-    {
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, SessionBackend>, CommandError> {
         self.0
             .lock()
             .map_err(|_| CommandError::new("internal error: backend lock poisoned"))
@@ -58,29 +57,50 @@ fn connect(
     state: State<'_, AppBackend>,
     backend: BackendKind,
     sim_state: Option<String>,
+    port: Option<String>,
 ) -> CmdResult<String> {
-    let conn = ops::connect(backend, sim_state.as_deref()).map_err(CommandError::new)?;
+    let conn = ops::connect(backend, sim_state.as_deref(), port.as_deref())
+        .map_err(CommandError::new)?;
     let label = conn.label.clone();
     let mut slot = state.lock()?;
-    *slot = conn.backend;
+    *slot = (backend, conn.backend);
     Ok(label)
 }
 
 #[tauri::command]
 fn program(state: State<'_, AppBackend>, spec: SessionSpec) -> CmdResult<bool> {
-    let mut backend = state.lock()?;
-    ops::program(&mut **backend, &spec).map_err(CommandError::new)
+    let mut slot = state.lock()?;
+    let (kind, backend) = &mut *slot;
+    let result = match kind {
+        // The USB bridge protocol is write-only with no read-back; use its own
+        // phase sequence instead of the erase->write->verify workflow.
+        BackendKind::Usb => ops::program_device(&mut **backend, &spec),
+        _ => ops::program(&mut **backend, &spec),
+    };
+    result.map_err(CommandError::new)
 }
 
 #[tauri::command]
 fn verify(state: State<'_, AppBackend>, spec: SessionSpec) -> CmdResult<bool> {
-    let mut backend = state.lock()?;
+    let mut slot = state.lock()?;
+    let (kind, backend) = &mut *slot;
+    if *kind == BackendKind::Usb {
+        return Err(CommandError::new(
+            "USB bridge has no read-back (official protocol is write-only); cannot verify",
+        ));
+    }
     ops::verify(&mut **backend, &spec).map_err(CommandError::new)
 }
 
 #[tauri::command]
 fn read(state: State<'_, AppBackend>) -> CmdResult<ops::ImageContents> {
-    let mut backend = state.lock()?;
+    let mut slot = state.lock()?;
+    let (kind, backend) = &mut *slot;
+    if *kind == BackendKind::Usb {
+        return Err(CommandError::new(
+            "USB bridge has no read-back (official protocol is write-only); cannot read",
+        ));
+    }
     ops::read(&mut **backend).map_err(CommandError::new)
 }
 
@@ -88,8 +108,9 @@ fn read(state: State<'_, AppBackend>) -> CmdResult<ops::ImageContents> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(AppBackend(Mutex::new(Box::new(
-            kr1878_programmer::MockBackend::new(),
+        .manage(AppBackend(Mutex::new((
+            BackendKind::Mock,
+            Box::new(kr1878_programmer::MockBackend::new()),
         ))))
         .invoke_handler(tauri::generate_handler![
             list_backends,

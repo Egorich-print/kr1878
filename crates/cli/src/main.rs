@@ -19,7 +19,9 @@ use kr1878_core::ops::{self, WriteOptions};
 use kr1878_file_format::arp as arpfmt;
 use kr1878_file_format::dat as datfmt;
 use kr1878_file_format::sav as savfmt;
-use kr1878_programmer::{LptBackend, MockBackend, SimBackend};
+use kr1878_programmer::{
+    GeneratorMode, LptBackend, MockBackend, SimBackend, UsbBridge, UsbBridgeBackend,
+};
 
 #[derive(Parser)]
 #[command(name = "kr1878", about = "KR1878VE1 toolchain CLI")]
@@ -28,7 +30,7 @@ struct Cli {
     cmd: Cmd,
 }
 
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum BackendKind {
     /// In-memory backend that skips the protocol layer (test/CI).
     Mock,
@@ -36,6 +38,31 @@ enum BackendKind {
     Sim,
     /// Physical parallel-port programmer.
     Lpt,
+    /// USB/COM bridge programmer (official `Uprg1878.exe` block protocol).
+    Usb,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum GenKind {
+    /// External resistor-capacitor generator.
+    Rc,
+    /// Internal generator (~50 kHz).
+    Internal,
+    /// External quartz 500 kHz – 8 MHz.
+    QuartzHigh,
+    /// External quartz below 500 kHz.
+    QuartzLow,
+}
+
+impl From<GenKind> for GeneratorMode {
+    fn from(k: GenKind) -> Self {
+        match k {
+            GenKind::Rc => GeneratorMode::Rc,
+            GenKind::Internal => GeneratorMode::Internal,
+            GenKind::QuartzHigh => GeneratorMode::QuartzHigh,
+            GenKind::QuartzLow => GeneratorMode::QuartzLow,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -63,6 +90,9 @@ enum Cmd {
         /// Simulated-device state file (`.sim`); `--backend sim` only.
         #[arg(long)]
         sim_state: Option<PathBuf>,
+        /// Serial port for the USB bridge; `--backend usb` only.
+        #[arg(long)]
+        port: Option<String>,
     },
     /// Write a `.sav` or `.mic` (optionally `.dat`) image to the device.
     Write {
@@ -83,6 +113,16 @@ enum Cmd {
         /// Simulated-device state file (`.sim`); `--backend sim` only.
         #[arg(long)]
         sim_state: Option<PathBuf>,
+        /// Serial port for the USB bridge; `--backend usb` only.
+        #[arg(long)]
+        port: Option<String>,
+        /// Generator clock mode for the USB bridge config word
+        /// (default: `quartz-high`).
+        #[arg(long, value_enum)]
+        gen_mode: Option<GenKind>,
+        /// Disable the startup-delay bit (RDE) in the USB bridge config word.
+        #[arg(long)]
+        no_delay: bool,
     },
     /// Verify the device against a `.sav` or `.mic` (optionally `.dat`) image.
     Verify {
@@ -100,7 +140,12 @@ enum Cmd {
         /// Simulated-device state file (`.sim`); `--backend sim` only.
         #[arg(long)]
         sim_state: Option<PathBuf>,
+        /// Serial port for the USB bridge; `--backend usb` only.
+        #[arg(long)]
+        port: Option<String>,
     },
+    /// List available serial ports (for the USB bridge).
+    Ports,
 }
 
 fn main() -> Result<()> {
@@ -111,7 +156,8 @@ fn main() -> Result<()> {
             out,
             dat,
             sim_state,
-        } => cmd_read(backend, out, dat, sim_state),
+            port,
+        } => cmd_read(backend, out, dat, sim_state, port),
         Cmd::Write {
             image,
             dat,
@@ -120,7 +166,10 @@ fn main() -> Result<()> {
             arp,
             no_erase,
             sim_state,
-        } => cmd_write(image, dat, backend, osc, arp, no_erase, sim_state),
+            port,
+            gen_mode,
+            no_delay,
+        } => cmd_write(image, dat, backend, osc, arp, no_erase, sim_state, port, gen_mode, no_delay),
         Cmd::Verify {
             image,
             dat,
@@ -128,7 +177,9 @@ fn main() -> Result<()> {
             osc,
             arp,
             sim_state,
-        } => cmd_verify(image, dat, backend, osc, arp, sim_state),
+            port,
+        } => cmd_verify(image, dat, backend, osc, arp, sim_state, port),
+        Cmd::Ports => cmd_ports(),
     }
 }
 
@@ -143,7 +194,13 @@ fn make_backend(kind: BackendKind, state: Option<&Path>) -> Result<Box<dyn Backe
             };
             Ok(Box::new(backend))
         }
+        BackendKind::Usb => bail!("`--backend usb` requires `--port` (see `kr1878 write --help`)"),
     }
+}
+
+fn make_usb(port: Option<&str>, delay: bool, mode: GenKind) -> Result<UsbBridgeBackend> {
+    let port = port.context("`--backend usb` requires `--port <serial port>`")?;
+    UsbBridgeBackend::open(port, delay, mode.into()).context("open USB bridge")
 }
 
 fn load_arp(path: Option<&Path>) -> Result<WriteOptions> {
@@ -182,7 +239,11 @@ fn cmd_read(
     out: Option<PathBuf>,
     dat: Option<PathBuf>,
     sim_state: Option<PathBuf>,
+    _port: Option<String>,
 ) -> Result<()> {
+    if backend == BackendKind::Usb {
+        bail!("USB bridge has no read-back (official protocol is write-only); cannot `read`");
+    }
     let mut b = make_backend(backend, sim_state.as_deref())?;
     let id = b.identify()?;
     println!(
@@ -204,6 +265,7 @@ fn cmd_read(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_write(
     image: PathBuf,
     dat: Option<PathBuf>,
@@ -212,19 +274,42 @@ fn cmd_write(
     arp: Option<PathBuf>,
     no_erase: bool,
     sim_state: Option<PathBuf>,
+    port: Option<String>,
+    gen_mode: Option<GenKind>,
+    no_delay: bool,
 ) -> Result<()> {
-    let mut b = make_backend(backend, sim_state.as_deref())?;
     let mut img = load_image(&image, dat.as_deref())?;
-    img.config = osc.or(img.config);
-    let mut opts = load_arp(arp.as_deref())?;
-    if no_erase {
-        opts.erase = false;
-    }
-    if ops::program_with(&mut *b, &img, &opts)? {
-        println!("programmed + verified");
-        Ok(())
+    if backend == BackendKind::Usb {
+        let mode = gen_mode.unwrap_or(GenKind::QuartzHigh);
+        let mut b = make_usb(port.as_deref(), !no_delay, mode)?;
+        if let Some(osc) = osc {
+            eprintln!("note: USB bridge derives the config word from `--gen`/`--no-delay`, ignoring `--osc {osc:02X}`");
+        }
+        if no_erase {
+            eprintln!("note: USB bridge ignores `--no-erase` (sync block is always sent)");
+        }
+        // `program()` runs the exact official phase order: sync → data ×2 →
+        // program → config → program. No read-back exists; success = all
+        // blocks acknowledged.
+        if b.program(&img)? {
+            println!("programmed (USB bridge, write-only)");
+            Ok(())
+        } else {
+            bail!("program failed on USB bridge")
+        }
     } else {
-        bail!("verify failed after programming")
+        let mut b = make_backend(backend, sim_state.as_deref())?;
+        img.config = osc.or(img.config);
+        let mut opts = load_arp(arp.as_deref())?;
+        if no_erase {
+            opts.erase = false;
+        }
+        if ops::program_with(&mut *b, &img, &opts)? {
+            println!("programmed + verified");
+            Ok(())
+        } else {
+            bail!("verify failed after programming")
+        }
     }
 }
 
@@ -235,7 +320,11 @@ fn cmd_verify(
     osc: Option<u8>,
     arp: Option<PathBuf>,
     sim_state: Option<PathBuf>,
+    _port: Option<String>,
 ) -> Result<()> {
+    if backend == BackendKind::Usb {
+        bail!("USB bridge has no read-back (official protocol is write-only); cannot `verify`");
+    }
     let mut b = make_backend(backend, sim_state.as_deref())?;
     let mut img = load_image(&image, dat.as_deref())?;
     img.config = osc.or(img.config);
@@ -246,6 +335,18 @@ fn cmd_verify(
     } else {
         bail!("verify failed")
     }
+}
+
+fn cmd_ports() -> Result<()> {
+    let ports = UsbBridge::available_ports();
+    if ports.is_empty() {
+        println!("no serial ports found");
+    } else {
+        for p in ports {
+            println!("{p}");
+        }
+    }
+    Ok(())
 }
 
 fn load_image(sav: &Path, dat: Option<&Path>) -> Result<MemoryImage> {

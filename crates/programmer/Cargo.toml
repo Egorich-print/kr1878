@@ -15,6 +15,7 @@ sim = ["kr1878-protocol/testutil"]
 kr1878-core = { path = "../core" }
 kr1878-protocol = { path = "../protocol" }
 kr1878-file-format = { path = "../file-format" }
+serialport = "4"
 thiserror.workspace = true
 tracing.workspace = true
 

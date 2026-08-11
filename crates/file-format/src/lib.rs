@@ -12,5 +12,5 @@ pub mod sim;
 
 pub use arp::{ArpConfig, parse_arp, write_arp};
 pub use dat::write_dat;
-pub use sav::{read_sav, write_sav};
+pub use sav::{read_sav, read_sav_uprg, write_sav};
 pub use sim::{read_sim, write_sim, write_sim_file};

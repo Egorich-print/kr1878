@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Added (Uprg1878 analysis)
+- Расшифрован официальный USB-программатор `Uprg1878.exe` (результат анализа
+  официального бинаря, полученного от Angstrom): `docs/HARDWARE_PROTOCOL.md` §7.
+  - COM-UART 38400-8N1 через USB-мост (НЕ LPT).
+  - Блочная передача 16 байт с подтверждением `'R'` (0x52) на каждый блок.
+  - Фазы: sync → data EEPROM ×2 (64 байта) → program `.sav` с пропуском 256-словного
+    заголовка → конфиг-слово → program повтор.
+  - Форма `TForm1` (unit1.pas), порт-обёртка `com_port.pas`; config-слово = RDE/OT1/OT2,
+    биты утроены (см. §7.5).
+- **`kr1878-programmer` USB bridge backend** (`UsbBridgeBackend`, `usb.rs`):
+  - `serialport` 38400-8N1, блоки 16 байт, `'R'`-подтверждение (drain-до-тишины);
+  - полная последовательность Uprg1878: sync → data×2 → program → config → program;
+  - shadow-image для read (протокол write-only, read-back отсутствует);
+  - `GeneratorMode` (RC / Internal / QuartzHigh / QuartzLow) + `config_word(delay, gen)`;
+  - `UsbBridge::available_ports` — список портов (аналог `GetSerialPortsList`).
+- **`kr1878-file-format`**: `read_sav_uprg` — чтение официальных `.sav`
+  (пропуск 256-словного заголовка), `sav::UPRG_HEADER_WORDS`.
+- **CLI**: `--backend usb --port <port>`, `--gen`, `--no-delay`; `kr1878 ports`.
+  read/verify над USB-мостом — явная ошибка (нет read-back).
+- **Desktop**: backend `usb` в списке, поле ввода порта, `program_device` для USB.
+
 ### Added
 - `kr1878-protocol`: нижний протокольный слой:
   - `transport::Transport` (`write_control` / `write_data` / `read_status` / `delay`), cинхр. ACK/BUSY.

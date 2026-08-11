@@ -52,6 +52,31 @@ pub fn read_sav<R: Read>(reader: &mut R) -> Result<Vec<u16>, SavError> {
     Ok(words)
 }
 
+/// Number of header words the official `Uprg1878.exe` skips in a `.sav` file
+/// (`SEEK(F_W, 0x100)` on a `file of Word` → 256 words = 512 bytes).
+///
+/// The official (Angstrom/TESSA) `.sav` files carry a 256-word header before the
+/// 1024 program words; our own `.sav` files are headerless (see `docs/FILE_FORMATS.md`).
+pub const UPRG_HEADER_WORDS: usize = 256;
+
+/// Read a `.sav` produced by the official toolchain: skip the 256-word header
+/// (via [`UPRG_HEADER_WORDS`]) then read [`PROGRAM_IMAGE_WORDS`] little-endian
+/// words. A truncated or empty body is padded with `0xFFFF` (erased state).
+///
+/// This mirrors `Uprg1878.exe`'s `SEEK(F_W, 0x100)` before the program phase.
+pub fn read_sav_uprg<R: Read>(reader: &mut R) -> Result<Vec<u16>, SavError> {
+    let mut skipped = 0usize;
+    let mut buf = [0u8; 2];
+    while skipped < UPRG_HEADER_WORDS {
+        let n = reader.read(&mut buf)?;
+        if n < 2 {
+            return read_sav(reader);
+        }
+        skipped += 1;
+    }
+    read_sav(reader)
+}
+
 /// Write a `.sav` image as little-endian `u16` words.
 pub fn write_sav<W: Write>(writer: &mut W, words: &[u16]) -> Result<(), SavError> {
     if words.len() > PROGRAM_IMAGE_WORDS {
@@ -104,5 +129,37 @@ mod tests {
         let mut out = Cursor::new(Vec::new());
         let big = vec![0u16; PROGRAM_IMAGE_WORDS + 1];
         assert!(write_sav(&mut out, &big).is_err());
+    }
+
+    #[test]
+    fn uprg_reader_skips_256_word_header() {
+        // Build an official-style file: 256 header words + 3 data words.
+        let mut bytes = vec![0u8; UPRG_HEADER_WORDS * 2];
+        // Header filled with 0xAAAA.
+        for b in bytes.chunks_mut(2) {
+            b.copy_from_slice(&0xAAAAu16.to_le_bytes());
+        }
+        bytes.extend_from_slice(&0x1234u16.to_le_bytes());
+        bytes.extend_from_slice(&0x5678u16.to_le_bytes());
+        bytes.extend_from_slice(&0x9ABCu16.to_le_bytes());
+
+        let got = read_sav_uprg(&mut Cursor::new(bytes)).unwrap();
+        assert_eq!(got.len(), PROGRAM_IMAGE_WORDS);
+        assert_eq!(got[0], 0x1234);
+        assert_eq!(got[1], 0x5678);
+        assert_eq!(got[2], 0x9ABC);
+        // The tail after the data words is padded with the erased state.
+        assert!(got[3..].iter().all(|&w| w == 0xFFFF));
+    }
+
+    #[test]
+    fn uprg_reader_short_file_degrades_to_plain_read() {
+        // A headerless (our own) file read through the uprg reader: the
+        // "header" simply consumes the leading words and the rest is data.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&0x1111u16.to_le_bytes());
+        bytes.extend_from_slice(&0x2222u16.to_le_bytes());
+        let got = read_sav_uprg(&mut Cursor::new(bytes)).unwrap();
+        assert_eq!(got[0], 0xFFFF); // header consumed past EOF -> padded
     }
 }

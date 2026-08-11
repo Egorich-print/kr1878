@@ -33,6 +33,7 @@ start:  inc     %a1
   let backends = $state<[string, string][]>([]);
   let backend = $state("mock");
   let simState = $state("");
+  let port = $state("");
   let connection = $state("");
   let connected = $state(false);
   let oscHex = $state("");
@@ -153,7 +154,11 @@ start:  inc     %a1
 
   async function connectBackend() {
     const r = await withBusy(() =>
-      invoke<string>("connect", { backend, simState: simState || null }),
+      invoke<string>("connect", {
+        backend,
+        simState: simState || null,
+        port: port || null,
+      }),
     );
     if (r !== undefined) {
       connection = r;
@@ -224,6 +229,14 @@ start:  inc     %a1
         <input
           placeholder="файл состояния .sim (необязательно)"
           bind:value={simState}
+          class="wide"
+          disabled={busy}
+        />
+      {/if}
+      {#if backend === 'usb'}
+        <input
+          placeholder="последовательный порт (например /dev/ttyUSB0)"
+          bind:value={port}
           class="wide"
           disabled={busy}
         />
