@@ -61,8 +61,8 @@ ADR-реестр: `docs/adr/`. Открытые решения фиксирую�
 | `core` (ISA кодирование, память, ops, backend trait) | ✅ реализован, 14 тестов |
 | `file-format` (`.sav`, `.dat`, `.arp`) | ✅ реализован, 12 тестов |
 | `assembler` (`kr1878-assembler`) | ✅ двухпроходный, 16 тестов |
-| `protocol` (`kr1878-protocol`) | ✅ битбанг + драйвер `Device`, 16 тестов, канал OSC/config |
-| `programmer` (`kr1878-programmer`) | ✅ LPT/mock/wire backends, 7 тестов |
+| `protocol` (`kr1878-protocol`) | ✅ битбанг + драйвер `Device`, 16 тестов, канал OSC/config, `testutil` (feature) с полярностной моделью |
+| `programmer` (`kr1878-programmer`) | ✅ LPT/mock/wire backends, 12 тестов (вкл. WireBackend e2e по реальному protocol-пути) |
 | `cli` (`kr1878`) | ✅ assemble/read/write/verify (clap; `--osc`/`--arp`) |
 
 **Стек реализованного ассемблера:**
@@ -97,23 +97,27 @@ ADR-реестр: `docs/adr/`. Открытые решения фиксирую�
 8. ✅ CLI `kr1878 assemble|read|write|verify` (clap, `--backend mock|lpt`).
 9. ✅ Канал OSC/config завершён (protocol `CMD_CONFIG=0x01`, `run`/verify через `expected_config`; sim store; `config_back`); `Device::write_config/read_config`; bulk read 1K слов покрыт тестом.
 10. ✅ `.arp`/OSC выведены на CLI: `kr1878 write|verify --osc N --arp file` (phase-gates `WriteOptions` в `core::ops`).
-11. 🔜 Desktop-приложение (Tauri/Svelte) тонкий UI.
-12. 🔜 Документация пользователя + инструкция.
+11. ✅ Интеграционное покрытие `WireBackend` по реальному протокольному пути
+    (`protocol::testutil` под feature; polarity-адаптер; `erase → write → read → verify` без `MockBackend`).
+    LPT-полярность смоделирована; **проверка на железе остаётся TODO** (ADR-004 §2).
+12. 🔜 Desktop-приложение (Tauri/Svelte) тонкий UI.
+13. 🔜 Документация пользователя + инструкция.
 
 > Статус этапа: **CLI этапа 3 готов, остался desktop-UI (этап 4).**
+> Блоки 1–3 (ADR-004): lint hygiene ✅ · protocol completion ✅ · WireBackend coverage ✅.
 
 ---
 
 ## 8. Как проверить текущее состояние
 
 ```
-cargo test --workspace              # юнит + интеграционные тесты (58)
+cargo test --workspace              # юнит + интеграционные тесты (67)
 cargo build --workspace             # сборка
 cargo clippy --workspace --all-targets -- -D warnings  # обязателен
 cargo fmt --all -- --check          # обязателен
 ```
 
-> Блоки 1–6 (ADR-004): lint hygiene ✅ · protocol → WireBackend coverage · CLI/UI.
+> Блоки 1–3 (ADR-004): lint hygiene ✅ · protocol completion ✅ · WireBackend coverage ✅ · CLI/UI.
 
 ---
 

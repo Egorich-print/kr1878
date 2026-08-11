@@ -1,4 +1,12 @@
-//! Test utilities: a passive recording transport and a full device simulator.
+//! Test utilities: a passive recording transport, an inverted-wire wrapper and
+//! a full device simulator.
+//!
+//! The module is compiled for the crate's own tests always, and for downstream
+//! crates behind the `testutil` feature (see `Cargo.toml`). Enabling the
+//! feature exposes the simulator as a library API so integration tests can
+//! drive the real protocol path instead of mocking at the `Backend` layer.
+
+use std::time::Duration;
 
 use crate::device::{CMD_CONFIG, CMD_DATA, CMD_PROGRAM};
 use crate::error::Result;
@@ -83,6 +91,75 @@ impl Transport for RecordingTransport {
             self.busy_pos += 1;
         }
         Ok(s)
+    }
+}
+
+/// A transport adapter that inverts the raw wire polarity of the BUSY (bit7)
+/// and ACK (bit6) status lines, exactly as the parallel-port hardware does
+/// (see `docs/HARDWARE_PROTOCOL.md` §1). It re-presents the *normalised*
+/// active-high status to the protocol, so the bit-bang driver stays polarity-
+/// agnostic, while the underlying transport observes the inverted levels.
+///
+/// Pair this with [`RecordingTransport`] or a real LPT transport to verify
+/// that the decoder's un-inverting matches the protocol's active-high levels.
+pub struct InvertedStatusTransport<T: Transport> {
+    inner: T,
+    invert: bool,
+}
+
+impl<T: Transport> InvertedStatusTransport<T> {
+    /// Wrap `inner` with the polarity inversion enabled.
+    pub fn inverted(inner: T) -> Self {
+        InvertedStatusTransport {
+            inner,
+            invert: true,
+        }
+    }
+
+    /// Wrap `inner` without polarity inversion (pass-through).
+    pub fn passthrough(inner: T) -> Self {
+        InvertedStatusTransport {
+            inner,
+            invert: false,
+        }
+    }
+
+    /// The raw status as the wire would deliver it (inversion applied).
+    pub fn raw(&mut self) -> Result<u8> {
+        let s = self.inner.read_status()?;
+        Ok(if self.invert {
+            s ^ (STATUS_BUSY | STATUS_ACK)
+        } else {
+            s
+        })
+    }
+
+    /// The normalised status the transport presents to the protocol.
+    pub fn normalized(&mut self) -> Result<u8> {
+        let s = self.raw()?;
+        Ok(if self.invert {
+            s ^ (STATUS_BUSY | STATUS_ACK)
+        } else {
+            s
+        })
+    }
+}
+
+impl<T: Transport> Transport for InvertedStatusTransport<T> {
+    fn write_control(&mut self, byte: u8) -> Result<()> {
+        self.inner.write_control(byte)
+    }
+
+    fn write_data(&mut self, byte: u8) -> Result<()> {
+        self.inner.write_data(byte)
+    }
+
+    fn read_status(&mut self) -> Result<u8> {
+        self.normalized()
+    }
+
+    fn delay(&mut self, duration: Duration) -> Result<()> {
+        self.inner.delay(duration)
     }
 }
 

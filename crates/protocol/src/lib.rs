@@ -15,7 +15,7 @@ pub mod device;
 pub mod error;
 pub mod transport;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testutil"))]
 pub mod testutil;
 
 pub use bits::Timing;

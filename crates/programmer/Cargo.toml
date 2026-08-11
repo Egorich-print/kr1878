@@ -13,3 +13,9 @@ tracing.workspace = true
 
 [target.'cfg(all(any(target_os = "linux", target_os = "freebsd"), target_arch = "x86_64"))'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+# Exposes the wire-protocol simulator + polarity adapter as a library API so
+# the integration tests can drive the real `WireBackend -> protocol -> transport`
+# path instead of mocking at the `Backend` layer.
+kr1878-protocol = { path = "../protocol", features = ["testutil"] }

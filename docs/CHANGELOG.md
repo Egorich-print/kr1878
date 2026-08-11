@@ -31,6 +31,20 @@
 - `kr1878` CLI: `write/verify --osc N --arp file`; `--no-erase`; `read` печатает OSC-байт.
 - Тесты: 16 (protocol), 14 (core), 7 (programmer), bulk read 1K слов.
 
+### Added (Block 3 — WireBackend integration coverage)
+- `kr1878-protocol`: `testutil` вынесен под feature `testutil`
+  (`#[cfg(any(test, feature = "testutil"))]`), `SimulatorTransport`/`RecordingTransport`
+  доступны downstream-крейтам.
+- `kr1878-protocol`: `InvertedStatusTransport` — адаптер полярности BUSY/ACK
+  (симуляция инвертированных уровней LPT-шины; `raw()`/`normalized()`).
+- `kr1878-programmer`: интеграционные тесты `tests/wire_integration.rs` гоняют
+  реальный путь `WireBackend → protocol::Device → Transport` (не `MockBackend`):
+  - `erase → write → read → verify` round-trip через `ops::program`/`ops::read`/`ops::verify`;
+  - config-канал, phase-gate `WriteOptions { data: false }`, `identify`;
+  - полный сеанс поверх `InvertedStatusTransport::inverted(SimulatorTransport)`.
+- Тесты workspace: 67 зелёных (было 62; +5 интеграционных в `programmer`).
+- TODO: валидация LPT-полярности/таймингов на железе (ADR-004 §2).
+
 ## Earlier
 - `core`: ISA (isa/operand), memory, ops, `Backend` trait — 12 тестов.
 - `file-format`: `.sav`/`.dat`/`.arp` — 12 тестов.
