@@ -51,9 +51,13 @@ pub fn assemble_with_loader(source: &str, loader: Loader<'_>) -> Result<Assemble
 
     // ---- Pass 1: symbols + address assignment (no emission).
     let mut pc: usize = 0;
+    let mut has_endc = false;
     for st in stmts.iter().zip(toks.iter()) {
         let (_, npc) = process(st.0.span, st.1, &mut syms, pc, true, None, "")?;
         pc = npc;
+        if let Ok((_, Class::Endc)) = classify(st.1, st.0.span) {
+            has_endc = true;
+        }
     }
 
     // ---- Pass 2: encode.
@@ -74,6 +78,26 @@ pub fn assemble_with_loader(source: &str, loader: Loader<'_>) -> Result<Assemble
             listing.push_str(&format!("{:04x}: {:04x}  {}\n", pc + off, w, st.0.text));
         }
         pc = npc;
+    }
+
+    // ---- `.endc` 3-byte cumulative checksum over all emitted words.
+    if has_endc {
+        // `.endc` advanced pc by 2 (checksum body). Sum only the code actually
+        // emitted before it (words [0, pc-2)), matching the official toolchain
+        // which folds the program bytes with carry propagation.
+        let code_len = pc.saturating_sub(2);
+        let checksum =
+            kr1878_core::crc::endc_checksum3(img.program[..code_len].iter().copied());
+        // Write the three bytes into the program body at the `.endc` position;
+        // the third byte lives in the low half of the following word (matching
+        // `.byte` layout).
+        let base = pc - 2;
+        if base + 2 <= PROGRAM_WORDS {
+            img.program[base] = (checksum[0] as u16) | ((checksum[1] as u16) << 8);
+            if base + 1 < PROGRAM_WORDS {
+                img.program[base + 1] = checksum[2] as u16;
+            }
+        }
     }
 
     Ok(AssembleOutput {
@@ -119,6 +143,8 @@ enum Class {
     Data { wide: bool, items: Vec<expr::Expr> },
     /// `.bpt` breakpoint.
     Bpt,
+    /// `.endc` — end of translation + compute the 3-byte cumulative checksum.
+    Endc,
     /// Program instruction.
     Insn { mnem: String, ops: Vec<Vec<Token>> },
 }
@@ -205,6 +231,9 @@ fn apply(class: &Class, pc: usize, syms: &Symbols, span: Span) -> Result<usize> 
         }
         Class::Bpt | Class::Insn { .. } => Ok(pc + 1),
         Class::Data { items, .. } => Ok(pc + items.len()),
+        // `.endc` reserves 3 bytes (2 words) for the checksum so addresses of
+        // anything after it (nothing, typically) stay consistent.
+        Class::Endc => Ok(pc + 2),
     }
 }
 
@@ -319,7 +348,9 @@ fn classify(tk: &[Token], span: Span) -> Result<(Vec<Def>, Class)> {
                 },
                 "even" => Class::Even,
                 "bpt" => Class::Bpt,
-                "end" | "list" => Class::Pass,
+                "end" => Class::Pass,
+                "endc" => Class::Endc,
+                "list" => Class::Pass,
                 other => return Err(AsmError::new(span, format!("unknown directive `.{other}`"))),
             };
             Ok((defs, c))
@@ -453,10 +484,10 @@ fn imm5(toks: &[Token], pc: usize, syms: &Symbols, span: Span) -> Result<u8> {
 fn br_target(toks: &[Token], pc: usize, syms: &Symbols, span: Span) -> Result<u16> {
     let ex = parse_expr(toks, span)?;
     let v = eval_expr(&ex, pc, syms, span)?;
-    if !(0..=0x3FF).contains(&v) {
+    if !(0..=0xFFF).contains(&v) {
         return Err(AsmError::new(
             span,
-            format!("branch target {v} out of range (0..0x3FF)"),
+            format!("branch target {v} out of range (0..0xFFF)"),
         ));
     }
     Ok(v as u16)
@@ -587,6 +618,69 @@ fn encode_word(
             value: 0,
         }
         .encode()?,
+
+        // ---- address-loading pseudos (expand to movl/ldr) ----
+        // mial dst,addr  -> movl dst, lo(addr)    (instruction address, word)
+        // miah dst,addr  -> movl dst, hi(addr)
+        // mdal dst,addr  -> movl dst, lo(addr)    (data address in command memory)
+        // mdah dst,addr  -> movl dst, hi(addr)&0x3F (bits 6-7 cleared per datasheet)
+        // ldal #6,addr   -> ldr  #6, lo(addr)
+        // ldah #7,addr   -> ldr  #7, hi(addr)&0x3F
+        // lia  #6,addr   -> ldr  #6, lo(addr)     (jump target address)
+        // liah #7,addr   -> ldr  #7, hi(addr)
+        "mial" | "mdal" => {
+            let dst = two(0)?;
+            let v = eval_expr(&parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?, pc, syms, span)?;
+            Instruction::Movl {
+                dst,
+                value: (v & 0xFF) as u8,
+            }
+            .encode()?
+        }
+        "miah" => {
+            let dst = two(0)?;
+            let v = eval_expr(&parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?, pc, syms, span)?;
+            Instruction::Movl {
+                dst,
+                value: ((v >> 8) & 0xFF) as u8,
+            }
+            .encode()?
+        }
+        "mdah" => {
+            let dst = two(0)?;
+            let v = eval_expr(&parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?, pc, syms, span)?;
+            Instruction::Movl {
+                dst,
+                value: ((v >> 8) & 0x3F) as u8,
+            }
+            .encode()?
+        }
+        "ldal" | "lia" => {
+            let reg = service_reg(
+                ops.first()
+                    .ok_or_else(|| AsmError::new(span, "missing operand"))?,
+                span,
+            )?;
+            let v = eval_expr(&parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?, pc, syms, span)?;
+            Instruction::Ldr {
+                reg,
+                value: (v & 0xFF) as u8,
+            }
+            .encode()?
+        }
+        "ldah" | "liah" => {
+            let reg = service_reg(
+                ops.first()
+                    .ok_or_else(|| AsmError::new(span, "missing operand"))?,
+                span,
+            )?;
+            let v = eval_expr(&parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?, pc, syms, span)?;
+            Instruction::Ldr {
+                reg,
+                value: ((v >> 8) & 0xFF) as u8,
+            }
+            .encode()?
+        }
 
         // ---- bit manipulation (BIC/BIS/BTG/BTT with l/h suffix)
         _ if tetrad_place(mnem).is_some() => {
@@ -777,6 +871,19 @@ fn encode_word(
         "ijsr" => Instruction::Ijsr.encode()?,
         "rts" => Instruction::Rts.encode()?,
         "rti" => Instruction::Rti.encode()?,
+        // Return with carry set to `c` (0x000E | c). `rtsc` accepts an optional
+        // single-bit operand (`rtsc` or `rtsc 1`).
+        "rtsc" => {
+            let carry = if ops.is_empty() {
+                false
+            } else {
+                let g = ops
+                    .first()
+                    .ok_or_else(|| AsmError::new(span, "missing operand"))?;
+                eval_expr(&parse_expr(g, span)?, pc, syms, span)? != 0
+            };
+            Instruction::Rtsc { carry }.encode()?
+        }
 
         // ---- fixed words / special
         "nop" => Instruction::Nop.encode()?,

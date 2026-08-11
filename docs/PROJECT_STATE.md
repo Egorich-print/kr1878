@@ -59,19 +59,20 @@ ADR-реестр: `docs/adr/`. Открытые решения фиксирую�
 
 | Компонент | Статус |
 |-----------|--------|
-| `core` (ISA кодирование, память, ops, backend trait) | ✅ реализован, 14 тестов |
-| `file-format` (`.sav`, `.dat`, `.arp`, `.sim`) | ✅ реализован, 16 тестов |
-| `assembler` (`kr1878-assembler`) | ✅ двухпроходный, 16 тестов |
+| `core` (ISA кодирование, память, ops, backend trait) | ✅ реализован, 21 тест |
+| `core` CPU-симулятор (`cpu.rs`) | ✅ исполняющий (decode/execute, флаги, SR/IR, стеки, прерывания), 5 тестов |
+| `file-format` (`.sav`, `.dat`, `.arp`, `.sim`) | ✅ реализован, 20 тестов |
+| `assembler` (`kr1878-assembler`) | ✅ двухпроходный, 22 теста |
 | `protocol` (`kr1878-protocol`) | ✅ битбанг + драйвер `Device`, 16 тестов, канал OSC/config, `testutil` (feature) с полярностной моделью |
-| `programmer` (`kr1878-programmer`) | ✅ LPT/mock/sim/wire backends, 15 тестов (вкл. WireBackend e2e и SimBackend с `.sim`-персистентностью) |
-| `cli` (`kr1878`) | ✅ assemble/read/write/verify (clap; `--osc`/`--arp`/`--backend sim`/`--sim-state`), 3 e2e теста |
+| `programmer` (`kr1878-programmer`) | ✅ LPT/mock/sim/wire/usb backends, 15 тестов (вкл. WireBackend e2e и SimBackend с `.sim`-персистентностью) |
+| `cli` (`kr1878`) | ✅ assemble/read/write/verify/ports/run (clap; `--osc`/`--arp`/`--backend sim`/`--sim-state`/`--port`/`--gen`/`--include-dir`/`--lst`/`--sym`), 7 e2e тестов |
 
 **Стек реализованного ассемблера:**
 - Препроцессор: `#define`, `#include` (через loader), `.macro/.endmacro` с подстановкой аргументов и авто-переименованием `@N`, `.if/.else/.endif`.
 - Лексер языка из `docs/FILE_FORMATS.md` §1 (базы `h/o/b`, `;`-комментарии, операторы `* / & + - \ ! ` и `^`, скобки).
 - Арифметический парсер по правилам приоритета документации (`()` → `* / &` → `+ - \ !`).
 - Двухпроходная сборка: pass 1 — символы/адреса, pass 2 — кодирование; глобальные метки, локальные `$n`, константы `name=const`.
-- Псевдо: `inc/dec/clr`; битовые `BICK/ВIS/BTG/BTT` с суффиксами `l/h`; псевдо-загрузка адресов `mial/miah/mdal/mdah/ldal/ldah`.
+- Псевдо: `inc/dec/clr`; битовые `BICK/ВIS/BTG/BTT` с суффиксами `l/h`; псевдо-загрузка адресов `mial/miah/mdal/mdah/ldal/ldah/lia/liah`; `rtsc`; `.endc` (3-байтовая контрольная сумма).
 - Директивы: `.byte/.word/.even/.bpt/.=`, `.end/.list`.
 - Полная таблица опкодов из `docs/REVERSE_ENGINEERING.md` §5 (двухоперандные, литеральные, однооперандные, сервисные SR, ветвления, фикс. слова).
 

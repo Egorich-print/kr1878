@@ -6,12 +6,15 @@
 //! hardware or OS feature.
 
 pub mod backend;
+pub mod cpu;
+pub mod crc;
 pub mod error;
 pub mod isa;
 pub mod memory;
 pub mod ops;
 
 pub use backend::{Backend, DeviceId};
+pub use cpu::Cpu;
 pub use error::{Error, Result};
 pub use isa::Instruction;
 pub use memory::MemoryImage;

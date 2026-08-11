@@ -90,6 +90,21 @@ pub fn write_sav<W: Write>(writer: &mut W, words: &[u16]) -> Result<(), SavError
     Ok(())
 }
 
+/// Write a `.sav` in the official `Uprg1878.exe` layout: a [`UPRG_HEADER_WORDS`]-
+/// word header followed by the program words. The header is written as `0xFFFF`
+/// (erased state), mirroring the reserve area the official toolchain skips.
+pub fn write_sav_uprg<W: Write>(writer: &mut W, words: &[u16]) -> Result<(), SavError> {
+    if words.len() > PROGRAM_IMAGE_WORDS {
+        return Err(SavError::TooLarge { words: words.len() });
+    }
+    for index in 0..UPRG_HEADER_WORDS {
+        writer
+            .write_all(&0xFFFFu16.to_le_bytes())
+            .map_err(|source| SavError::Read { index, source })?;
+    }
+    write_sav(writer, words)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,5 +176,21 @@ mod tests {
         bytes.extend_from_slice(&0x2222u16.to_le_bytes());
         let got = read_sav_uprg(&mut Cursor::new(bytes)).unwrap();
         assert_eq!(got[0], 0xFFFF); // header consumed past EOF -> padded
+    }
+
+    #[test]
+    fn uprg_writer_prepends_header() {
+        let words = vec![0x1234u16, 0x5678];
+        let mut out = Cursor::new(Vec::new());
+        write_sav_uprg(&mut out, &words).unwrap();
+        let bytes = out.into_inner();
+        assert_eq!(bytes.len(), (UPRG_HEADER_WORDS + words.len()) * 2);
+        // The header is erased state.
+        for b in bytes[..UPRG_HEADER_WORDS * 2].chunks_exact(2) {
+            assert_eq!(b, &0xFFFFu16.to_le_bytes());
+        }
+        // The body follows at word offset UPRG_HEADER_WORDS.
+        let got = read_sav_uprg(&mut Cursor::new(bytes)).unwrap();
+        assert_eq!(&got[..2], &words[..]);
     }
 }

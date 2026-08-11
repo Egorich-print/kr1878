@@ -12,4 +12,5 @@ license.workspace = true
 testutil = []
 
 [dependencies]
+kr1878-core = { path = "../core" }
 thiserror.workspace = true

@@ -7,7 +7,7 @@ pub mod operand;
 
 pub use operand::{Operand, Segment};
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 /// Which tetrad (nibble) a 4-bit constant occupies when forming an 8-bit mask.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -282,9 +282,172 @@ impl Instruction {
             Stop => fixed_word::STOP,
         })
     }
-}
 
-/// opcode(6) | src(5) | dst(5)
+    /// Decode a 16-bit machine word back into an [`Instruction`]. The inverse
+    /// of [`Instruction::encode`]; the exact opcode map mirrors `encode` so a
+    /// round-trip is lossless.
+    pub fn decode(word: u16) -> Result<Instruction> {
+        use Instruction::*;
+        let op6 = (word >> 10) as u8 & 0x3F;
+        let op11 = word >> 5 & 0x07FF;
+        let dst = Operand::from_u8((word & 0x1F) as u8);
+        let op = |x: u8| Operand::from_u8(x);
+
+        // ---- fixed words (exact) ----
+        match word {
+            w if w == fixed_word::NOP => return Ok(Nop),
+            w if w == fixed_word::WAIT => return Ok(Wait),
+            w if w == fixed_word::RESET => return Ok(Reset),
+            w if w == fixed_word::IJMP => return Ok(Ijmp),
+            w if w == fixed_word::TOF => return Ok(Tof),
+            w if w == fixed_word::TDC => return Ok(Tdc),
+            w if w == fixed_word::SKSP => return Ok(Sksp),
+            w if w == fixed_word::IJSR => return Ok(Ijsr),
+            w if w == fixed_word::STOP => return Ok(Stop),
+            w if w == fixed_word::RTS => return Ok(Rts),
+            w if w == fixed_word::RTI => return Ok(Rti),
+            w if w == 0x000E || w == 0x000F => return Ok(Rtsc { carry: w & 1 == 1 }),
+            _ => {}
+        }
+
+        // ---- service-register / RS group (checked before one-op, which it
+        //      overlaps in the high opcode space) ----
+        if word >> 11 == 0b00100 {
+            // ldr: const(8)<<3 | reg(3)
+            let value = ((word >> 3) & 0xFF) as u8;
+            let reg = (word & 0x7) as u8;
+            return Ok(Ldr { reg, value });
+        }
+        match word >> 8 {
+            0b00000010 => {
+                let reg = ((word >> 5) & 0x7) as u8;
+                return Ok(Mtpr {
+                    reg,
+                    src: op((word & 0x1F) as u8),
+                });
+            }
+            0b00000011 => {
+                let reg = ((word >> 5) & 0x7) as u8;
+                return Ok(Mfpr {
+                    dst: op((word & 0x1F) as u8),
+                    reg,
+                });
+            }
+            _ => {}
+        }
+        match op11 {
+            0b00000000001 => return Ok(Swap(dst)),
+            0b00000000010 => return Ok(Neg(dst)),
+            0b00000000011 => return Ok(Not(dst)),
+            0b00000000100 => return Ok(Shl(dst)),
+            0b00000000101 => return Ok(Shr(dst)),
+            0b00000000110 => return Ok(Shra(dst)),
+            0b00000000111 => return Ok(Rlc(dst)),
+            0b00000001000 => return Ok(Rrc(dst)),
+            0b00000001001 => return Ok(Adc(dst)),
+            0b00000001010 => return Ok(Sbc(dst)),
+            _ => {}
+        }
+
+        // ---- push/pop: `0000000000010/3` in bits 6..3 (reg in 2..0) ----
+        match word >> 3 {
+            0b0000000000010 => return Ok(Push { reg: (word & 0x7) as u8 }),
+            0b0000000000011 => return Ok(Pop { reg: (word & 0x7) as u8 }),
+            _ => {}
+        }
+        // ---- sst/cst: `000000011000/100` in bits 15..4 (mask in 3..0) ----
+        match word >> 4 {
+            0b000000011000 => return Ok(Sst { mask: (word & 0x0F) as u8 }),
+            0b000000011100 => return Ok(Cst { mask: (word & 0x0F) as u8 }),
+            _ => {}
+        }
+
+        // ---- branch (4-bit opcode in bits 15..12, 12-bit address) ----
+        let op4 = (word >> 12) as u8 & 0x0F;
+        let addr = word & 0x0FFF;
+        match op4 {
+            0b1000 => return Ok(Jmp { addr }),
+            0b1001 => return Ok(Jsr { addr }),
+            0b1010 => return Ok(Jz { addr }),
+            0b1011 => return Ok(Jnz { addr }),
+            0b1100 => return Ok(Jns { addr }),
+            0b1101 => return Ok(Js { addr }),
+            0b1110 => return Ok(Jnc { addr }),
+            0b1111 => return Ok(Jc { addr }),
+            _ => {}
+        }
+
+        // ---- two-operand data ops (6-bit opcode) ----
+        let two_op_match = |c: u8| -> Option<(Operand, Operand)> {
+            if op6 == c {
+                let src = op(((word >> 5) & 0x1F) as u8);
+                Some((dst, src))
+            } else {
+                None
+            }
+        };
+        if let Some((d, s)) = two_op_match(op::MOV as u8) {
+            return Ok(Mov { dst: d, src: s });
+        }
+        if let Some((d, s)) = two_op_match(op::CMP as u8) {
+            return Ok(Cmp { dst: d, src: s });
+        }
+        if let Some((d, s)) = two_op_match(op::SUB as u8) {
+            return Ok(Sub { dst: d, src: s });
+        }
+        if let Some((d, s)) = two_op_match(op::ADD as u8) {
+            return Ok(Add { dst: d, src: s });
+        }
+        if let Some((d, s)) = two_op_match(op::AND as u8) {
+            return Ok(And { dst: d, src: s });
+        }
+        if let Some((d, s)) = two_op_match(op::OR as u8) {
+            return Ok(Or { dst: d, src: s });
+        }
+        if let Some((d, s)) = two_op_match(op::XOR as u8) {
+            return Ok(Xor { dst: d, src: s });
+        }
+
+        // ---- 5-bit literal ops ----
+        let lit5 = ((word >> 5) & 0x1F) as u8;
+        if op6 == op::ADDL as u8 {
+            return Ok(Addl { dst, value: lit5 });
+        }
+        if op6 == op::SUBL as u8 {
+            return Ok(Subl { dst, value: lit5 });
+        }
+
+        // ---- tetrad ops: opcode(6) | p(1) | tetrad(4) | dst(5) ----
+        let tetrad = ((word >> 5) & 0x0F) as u8;
+        let place = if word & 0x0200 != 0 {
+            Place::High
+        } else {
+            Place::Low
+        };
+        if op6 == op::BIC as u8 {
+            return Ok(Bic { dst, tetrad, place });
+        }
+        if op6 == op::BIS as u8 {
+            return Ok(Bis { dst, tetrad, place });
+        }
+        if op6 == op::BTG as u8 {
+            return Ok(Btg { dst, tetrad, place });
+        }
+        if op6 == op::BTT as u8 {
+            return Ok(Btt { dst, tetrad, place });
+        }
+
+        // ---- 8-bit literal ops (3-bit opcode in bits 15..13) ----
+        let lit8 = ((word >> 5) & 0xFF) as u8;
+        match word >> 13 {
+            0b010 => return Ok(Movl { dst, value: lit8 }),
+            0b011 => return Ok(Cmpl { dst, value: lit8 }),
+            _ => {}
+        }
+
+        Err(Error::InvalidOpcode(word))
+    }
+}/// opcode(6) | src(5) | dst(5)
 fn two_op(opcode: u16, dst: u16, src: u16) -> u16 {
     ((opcode & 0x3F) << 10) | (src << 5) | (dst & 0x1F)
 }
@@ -310,9 +473,10 @@ fn one_op(opcode11: u16, dst: u16) -> u16 {
     ((opcode11 & 0x07FF) << 5) | (dst & 0x1F)
 }
 
-/// opcode(6) | addr(10)
+/// opcode(4) | addr(12) — branch instructions use a 4-bit opcode in bits 15..12
+/// and a 12-bit absolute address (datasheet: `JMP 1000 address`, etc.).
 fn branch(opcode: u16, addr: u16) -> u16 {
-    ((opcode & 0x3F) << 10) | (addr & 0x03FF)
+    ((opcode & 0x0F) << 12) | (addr & 0x0FFF)
 }
 
 #[cfg(test)]
@@ -352,9 +516,21 @@ mod tests {
 
     #[test]
     fn branch_ten_bit_address() {
-        let w = Instruction::Jmp { addr: 0x2FF }.encode().unwrap();
-        assert_eq!(op_of(w), 0b1000);
-        assert_eq!(w & 0x03FF, 0x2FF);
+        // Branch opcode lives in bits 15..12; the address is 12 bits wide.
+        let w = Instruction::Jmp { addr: 0x8FF }.encode().unwrap();
+        assert_eq!(w >> 12, 0b1000);
+        assert_eq!(w & 0x0FFF, 0x8FF);
+        // ADDL (6-bit opcode 0b001100) must NOT collide with JNS (0b1100 in bits 15..12).
+        let addl = Instruction::Addl {
+            dst: Operand::new(Segment::D, 0),
+            value: 31,
+        }
+        .encode()
+        .unwrap();
+        let jns = Instruction::Jns { addr: 0x1FF }.encode().unwrap();
+        assert_ne!(addl, jns);
+        assert_eq!(addl >> 10, 0b001100);
+        assert_eq!(jns >> 12, 0b1100);
     }
 
     #[test]
@@ -387,5 +563,77 @@ mod tests {
         assert_eq!(lo & 0x0200, 0);
         assert_eq!(hi & 0x0200, 0x0200);
         assert_eq!((hi >> 5) & 0x0F, 9);
+    }
+
+    fn all_instructions() -> Vec<Instruction> {
+        use Instruction::*;
+        let d0 = Operand::new(Segment::D, 0);
+        let a5 = Operand::new(Segment::A, 5);
+        let b3 = Operand::new(Segment::B, 3);
+        vec![
+            Mov { dst: d0, src: a5 },
+            Cmp { dst: d0, src: a5 },
+            Sub { dst: d0, src: a5 },
+            Add { dst: d0, src: a5 },
+            And { dst: d0, src: a5 },
+            Or { dst: d0, src: a5 },
+            Xor { dst: d0, src: a5 },
+            Movl { dst: d0, value: 0xFF },
+            Cmpl { dst: d0, value: 0x55 },
+            Addl { dst: d0, value: 31 },
+            Subl { dst: d0, value: 1 },
+            Bic { dst: d0, tetrad: 0xF, place: Place::Low },
+            Bic { dst: d0, tetrad: 0xF, place: Place::High },
+            Bis { dst: d0, tetrad: 0x5, place: Place::Low },
+            Btg { dst: d0, tetrad: 0x3, place: Place::High },
+            Btt { dst: d0, tetrad: 0xA, place: Place::Low },
+            Swap(d0),
+            Neg(d0),
+            Not(d0),
+            Shl(d0),
+            Shr(d0),
+            Shra(d0),
+            Rlc(d0),
+            Rrc(d0),
+            Adc(d0),
+            Sbc(d0),
+            Ldr { reg: 7, value: 0x42 },
+            Mfpr { dst: d0, reg: 3 },
+            Mtpr { reg: 6, src: a5 },
+            Push { reg: 2 },
+            Pop { reg: 4 },
+            Sst { mask: 0xB },
+            Cst { mask: 0x9 },
+            Tof,
+            Tdc,
+            Jmp { addr: 0x2FF },
+            Jsr { addr: 0x123 },
+            Jz { addr: 0x0AA },
+            Jnz { addr: 0x1BB },
+            Jns { addr: 0x2CC },
+            Js { addr: 0x3DD },
+            Jnc { addr: 0x0EE },
+            Jc { addr: 0x1FF },
+            Ijmp,
+            Ijsr,
+            Rts,
+            Rti,
+            Rtsc { carry: false },
+            Rtsc { carry: true },
+            Nop,
+            Wait,
+            Reset,
+            Sksp,
+            Stop,
+        ]
+    }
+
+    #[test]
+    fn decode_roundtrips_all_instructions() {
+        for ins in all_instructions() {
+            let w = ins.encode().unwrap();
+            let back = Instruction::decode(w).unwrap();
+            assert_eq!(back, ins, "round-trip failed for {ins:?} (word {w:04X})");
+        }
     }
 }

@@ -26,6 +26,10 @@ use kr1878_programmer::{
 #[derive(Parser)]
 #[command(name = "kr1878", about = "KR1878VE1 toolchain CLI")]
 struct Cli {
+    /// Extra `#include` search directory (relative to the current working
+    /// directory).
+    #[arg(long, global = true)]
+    include_dir: Option<PathBuf>,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -76,6 +80,12 @@ enum Cmd {
         /// Also write the data EEPROM bytes as a `.dat` hex file.
         #[arg(short, long)]
         dat: Option<PathBuf>,
+        /// Also write the assembler listing to this file (`.lst`).
+        #[arg(long)]
+        lst: Option<PathBuf>,
+        /// Also write the symbol table to this file (`.sym`).
+        #[arg(long)]
+        sym: Option<PathBuf>,
     },
     /// Read the device into `.sav` / `.dat` files.
     Read {
@@ -146,11 +156,35 @@ enum Cmd {
     },
     /// List available serial ports (for the USB bridge).
     Ports,
+    /// Execute a `.sav`/`.mic` program on the instruction-accurate CPU
+    /// simulator and dump the final state.
+    Run {
+        image: PathBuf,
+        /// Max instructions to execute (default: 1_000_000).
+        #[arg(long, default_value_t = 1_000_000)]
+        steps: u64,
+        /// Dump data memory (all 256 bytes) after execution.
+        #[arg(long)]
+        dump: bool,
+        /// Dump data EEPROM (64 bytes) after execution.
+        #[arg(long)]
+        eeprom: bool,
+    },
 }
 
 fn main() -> Result<()> {
-    match Cli::parse().cmd {
-        Cmd::Assemble { source, out, dat } => cmd_assemble(source, out, dat),
+    let cli = Cli::parse();
+    if let Some(dir) = cli.include_dir {
+        set_include_dir(dir)?;
+    }
+    match cli.cmd {
+        Cmd::Assemble {
+            source,
+            out,
+            dat,
+            lst,
+            sym,
+        } => cmd_assemble(source, out, dat, lst, sym),
         Cmd::Read {
             backend,
             out,
@@ -180,6 +214,7 @@ fn main() -> Result<()> {
             port,
         } => cmd_verify(image, dat, backend, osc, arp, sim_state, port),
         Cmd::Ports => cmd_ports(),
+        Cmd::Run { image, steps, dump, eeprom } => cmd_run(image, steps, dump, eeprom),
     }
 }
 
@@ -196,6 +231,45 @@ fn make_backend(kind: BackendKind, state: Option<&Path>) -> Result<Box<dyn Backe
         }
         BackendKind::Usb => bail!("`--backend usb` requires `--port` (see `kr1878 write --help`)"),
     }
+}
+
+static INCLUDE_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+/// Record the `#include` search directory from the global CLI flag.
+fn set_include_dir(dir: PathBuf) -> Result<()> {
+    if !dir.is_dir() {
+        bail!("include dir does not exist: {}", dir.display());
+    }
+    let _ = INCLUDE_DIR.set(dir);
+    Ok(())
+}
+
+/// Load an `#include`d file from the configured search directory (or the
+/// current working directory as a fallback), used by the assembler loader.
+fn load_include(name: &str) -> std::io::Result<String> {
+    let dir = INCLUDE_DIR.get();
+    let candidate = dir
+        .map(|d| d.join(name))
+        .unwrap_or_else(|| std::path::PathBuf::from(name));
+    std::fs::read_to_string(&candidate).map_err(|e| {
+        std::io::Error::new(
+            e.kind(),
+            format!("cannot load `#include \"{name}\"` from {}: {e}", candidate.display()),
+        )
+    })
+}
+
+/// Assemble `.mic` source text with the CLI `#include` loader enabled.
+fn assemble_mic(text: &str) -> anyhow::Result<kr1878_assembler::AssembleOutput> {
+    let mut loader = |name: &str| -> kr1878_assembler::error::Result<String> {
+        load_include(name).map_err(|e| {
+            kr1878_assembler::error::AsmError::new(
+                kr1878_assembler::error::Span { file: 0, line: 0 },
+                e.to_string(),
+            )
+        })
+    };
+    kr1878_assembler::assemble_with_loader(text, Some(&mut loader)).context("assembly failed")
 }
 
 fn make_usb(port: Option<&str>, delay: bool, mode: GenKind) -> Result<UsbBridgeBackend> {
@@ -219,10 +293,16 @@ fn load_arp(path: Option<&Path>) -> Result<WriteOptions> {
     }
 }
 
-fn cmd_assemble(source: PathBuf, out: Option<PathBuf>, dat: Option<PathBuf>) -> Result<()> {
+fn cmd_assemble(
+    source: PathBuf,
+    out: Option<PathBuf>,
+    dat: Option<PathBuf>,
+    lst: Option<PathBuf>,
+    sym: Option<PathBuf>,
+) -> Result<()> {
     let text = std::fs::read_to_string(&source)
         .with_context(|| format!("cannot read {}", source.display()))?;
-    let result = kr1878_assembler::assemble(&text).context("assembly failed")?;
+    let result = assemble_mic(&text)?;
     let out = out.unwrap_or_else(|| source.with_extension("sav"));
     let words = result.image.program;
     write_sav(&out, &words)?;
@@ -230,6 +310,21 @@ fn cmd_assemble(source: PathBuf, out: Option<PathBuf>, dat: Option<PathBuf>) -> 
     if let Some(dat_path) = dat {
         write_dat(&dat_path, &result.image.data)?;
         println!("assemble: data -> {}", dat_path.display());
+    }
+    if let Some(lst_path) = lst {
+        std::fs::write(&lst_path, &result.listing)
+            .with_context(|| format!("write listing {}", lst_path.display()))?;
+        println!("assemble: listing -> {}", lst_path.display());
+    }
+    if let Some(sym_path) = sym {
+        let mut text = String::new();
+        for (name, v) in result.symbols.globals() {
+            let kind = if v.is_label { "label" } else { "const" };
+            text.push_str(&format!("{kind:6} {name:<24} = 0x{:03X} ; line {}\n", v.value, v.line));
+        }
+        std::fs::write(&sym_path, text)
+            .with_context(|| format!("write symbols {}", sym_path.display()))?;
+        println!("assemble: symbols -> {}", sym_path.display());
     }
     Ok(())
 }
@@ -349,12 +444,58 @@ fn cmd_ports() -> Result<()> {
     Ok(())
 }
 
+fn cmd_run(image: PathBuf, steps: u64, dump: bool, eeprom: bool) -> Result<()> {
+    let img = load_image(&image, None)?;
+    let mut cpu = kr1878_core::Cpu::new();
+    cpu.load_program(&img.program);
+    cpu.reset();
+    let done = cpu.run(steps).context("simulation failed")?;
+    println!(
+        "sim: executed {done}/{steps} instructions (pc=0x{:03X}, stopped={})",
+        cpu.pc, cpu.stopped
+    );
+    if cpu.stopped {
+        println!("sim: program reached STOP");
+    } else if done < steps {
+        println!("sim: program ended early (STOP/error)");
+    } else {
+        eprintln!(
+            "sim: step limit reached without STOP — program may be an infinite loop"
+        );
+    }
+    println!("sim: RS = 0x{:02X} (C={} Z={} S={} IE={} OF={} DC={})",
+        cpu.rs.to_byte(), cpu.rs.c as u8, cpu.rs.z as u8, cpu.rs.s as u8,
+        cpu.rs.ie as u8, cpu.rs.of as u8, cpu.rs.dc as u8);
+    println!("sim: port A = 0x{:02X}, port B = 0x{:02X}", cpu.port_a(), cpu.port_b());
+    if dump {
+        println!("sim: data memory:");
+        for row in 0..16 {
+            let base = row * 16;
+            let bytes: Vec<String> = cpu.data[base..base + 16]
+                .iter()
+                .map(|b| format!("{b:02X}"))
+                .collect();
+            println!("  {base:02X}: {}", bytes.join(" "));
+        }
+    }
+    if eeprom {
+        let e = cpu.data_eeprom();
+        println!("sim: data EEPROM:");
+        for row in 0..4 {
+            let base = row * 16;
+            let bytes: Vec<String> = e[base..base + 16].iter().map(|b| format!("{b:02X}")).collect();
+            println!("  C{base:02X}: {}", bytes.join(" "));
+        }
+    }
+    Ok(())
+}
+
 fn load_image(sav: &Path, dat: Option<&Path>) -> Result<MemoryImage> {
     let mut img = match sav.extension().and_then(|e| e.to_str()) {
         Some("mic") => {
             let text = std::fs::read_to_string(sav)
                 .with_context(|| format!("cannot read {}", sav.display()))?;
-            let result = kr1878_assembler::assemble(&text).context("assembly failed")?;
+            let result = assemble_mic(&text)?;
             result.image
         }
         _ => {

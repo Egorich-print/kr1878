@@ -107,7 +107,7 @@ impl<'a> Preprocessor<'a> {
                 }
                 continue;
             }
-            if lower == ".endif" || lower == ".endc" {
+            if lower == ".endif" {
                 cond.pop();
                 continue;
             }
@@ -166,7 +166,7 @@ impl<'a> Preprocessor<'a> {
 
 fn is_control(line: &str) -> bool {
     let l = line.to_ascii_lowercase();
-    l == ".if" || l.starts_with(".if ") || l == ".else" || l == ".endif" || l == ".endc"
+    l == ".if" || l.starts_with(".if ") || l == ".else" || l == ".endif"
 }
 
 fn parse_macro_header(line: &str, span: &Span) -> Result<(String, Vec<String>)> {
@@ -223,11 +223,14 @@ fn rename_at_labels(line: &str, roff: usize) -> String {
             while end < s.len() && s.as_bytes()[end].is_ascii_digit() {
                 end += 1;
             }
-            if end > pos + 1 && end < s.len() {
+            if end > pos + 1 {
+                // Rename even at the very end of the line (`jmp @1`); the
+                // trailing `@1` must become a unique local reference.
                 let unique = format!("${}{}", &s[pos + 1..end], roff * 997);
                 s.replace_range(pos..end, &unique);
                 more = true;
             } else {
+                // A bare `@` with no digits is not a label marker; stop.
                 break;
             }
         }

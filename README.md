@@ -47,6 +47,17 @@ cargo run -- verify demo.mic --backend sim --sim-state chip.sim
 cargo run -- read --backend sim --sim-state chip.sim --out dump.sav
 ```
 
+### Инструкционный симулятор (исполнение программы)
+
+```sh
+cargo run -- run examples/blink_ram.mic --steps 200000 --dump
+```
+
+`run` исполняет `.sav`/`.mic` на аккуратном CPU-симуляторе ядра ТЕСЕЙ
+(`kr1878-core::cpu`): декодирует каждую команду и выполняет её против состояния
+процессора (PC/RS/SR, память данных, стеки, IR0/IR1). Скетчи моргания реально
+переключают порт B. `--dump` печатает память данных, `--eeprom` — data EEPROM.
+
 ### USB/COM мост (официальный `Uprg1878.exe` протокол)
 
 ```sh

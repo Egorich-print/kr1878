@@ -38,8 +38,8 @@ fn movl_eight_bit_immediate() {
 fn branch_to_label_resolves_forward() {
     let o = img("jsr ska ; call\nnop\nska: rts\n");
     let w = word(&o, 0);
-    assert_eq!(w >> 10, 0b1001); // JSR
-    assert_eq!(w & 0x03FF, 2); // address of `ska:`
+    assert_eq!(w >> 12, 0b1001); // JSR (4-bit opcode in bits 15..12)
+    assert_eq!(w & 0x0FFF, 2); // address of `ska:`
     assert_eq!(word(&o, 2), 0x000C); // RTS
 }
 
@@ -48,8 +48,8 @@ fn branch_local_basic() {
     let o = img("start:\ninc %a0\n$1: nop\njmp $1\n");
     // inc@0, nop@1 ($1), jmp@2 -> target 1
     let w = word(&o, 2);
-    assert_eq!(w >> 10, 0b1000);
-    assert_eq!(w & 0x03FF, 1);
+    assert_eq!(w >> 12, 0b1000);
+    assert_eq!(w & 0x0FFF, 1);
 }
 
 #[test]
@@ -146,4 +146,60 @@ fn setpc_directive_moves_cursor() {
 fn byte_of_dot_uses_current_pc() {
     let o = img(".byte .\n");
     assert_eq!(word(&o, 0), 0x0000);
+}
+
+#[test]
+fn rtsc_encodes_carry_variant() {
+    let o = img("rtsc\nrtsc 1\nrtsc 0\n");
+    assert_eq!(word(&o, 0), 0x000E);
+    assert_eq!(word(&o, 1), 0x000F);
+    assert_eq!(word(&o, 2), 0x000E);
+}
+
+#[test]
+fn address_pseudos_expand_to_movl_ldr() {
+    // mial/miah (instruction address), mdal/mdah (data address).
+    // `label:` does not emit a word, so the first instruction sits at 0.
+    let o = img("label:\nmial %a0,label\nmiah %a1,label\nmdal %a2,label\nmdah %a3,label\n");
+    assert_eq!(word(&o, 0) >> 13, 0b010); // MOVL
+    assert_eq!(word(&o, 0) & 0x1F, 0); // dst %a0
+    assert_eq!((word(&o, 0) >> 5) & 0xFF, 0); // lo(0)
+    assert_eq!(word(&o, 1) >> 13, 0b010);
+    assert_eq!(word(&o, 1) & 0x1F, 1); // dst %a1
+    assert_eq!((word(&o, 1) >> 5) & 0xFF, 0); // hi(0)
+
+    // A label at a high address: mial loads low byte, miah loads high byte.
+    let o = img(".\t= 123h\nhi:\nmial %a0,hi\nmiah %a1,hi\n");
+    assert_eq!((word(&o, 0x123) >> 5) & 0xFF, 0x23); // lo(0x123)
+    assert_eq!((word(&o, 0x124) >> 5) & 0xFF, 0x01); // hi(0x123)
+}
+
+#[test]
+fn sr_address_pseudos_expand_to_ldr() {
+    // ldal/ldah (data addr into SR6/SR7), lia/liah (jump addr).
+    let o = img("target:\nldal #6,target\nldah #7,target\nlia #6,target\nliah #7,target\n");
+    // ldr is opcode 0b00100 (bits 15..11).
+    assert_eq!(word(&o, 0) >> 11, 0b00100);
+    assert_eq!(word(&o, 0) & 0x7, 6); // SR6
+    assert_eq!((word(&o, 0) >> 3) & 0xFF, 0); // lo(0)
+    assert_eq!(word(&o, 1) & 0x7, 7); // SR7
+}
+
+#[test]
+fn endc_writes_three_byte_checksum() {
+    // Sum of {0x0420, 0x0000} bytes with carry propagation:
+    // b0 = 0x20, b1 = 0x04, b2 = 0x00.
+    let o = img("mov %a0,%a1\nnop\n.endc\n");
+    let cs = word(&o, 2);
+    assert_eq!(cs & 0xFF, 0x20); // checksum[0]
+    assert_eq!((cs >> 8) & 0xFF, 0x04); // checksum[1]
+    assert_eq!(word(&o, 3) & 0xFF, 0x00); // checksum[2]
+}
+
+#[test]
+fn include_expands_defined_constant() {
+    // Preprocessor `#include` requires a loader; emulate it by concatenating.
+    let src = "#define LED 1\nmovl %a0,LED\n";
+    let o = img(src);
+    assert_eq!((word(&o, 0) >> 5) & 0xFF, 1);
 }

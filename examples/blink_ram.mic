@@ -1,0 +1,53 @@
+; =====================================================================
+;  blink_ram.mic — моргание светодиодом на PB0 (счётчик в ОЗУ)
+;  МК КР1878ВЕ1 (ядро ТЕСЕЙ)
+;
+;  Более короткая версия `blink_led.mic`: счётчики задержки живут в ОЗУ
+;  (0x40..0xBF), а не в ЭСППЗУ-регионе, поэтому цикл короче и нагляднее
+;  для симулятора (`kr1878 run --backend sim`).
+; =====================================================================
+
+; ---- векторы прерываний ----
+        jmp     start
+        .word   0FFFFh, 0FFFFh, 0FFFFh, 0FFFFh
+        .word   0FFFFh, 0FFFFh, 0FFFFh, 0FFFFh
+        .word   0FFFFh, 0FFFFh, 0FFFFh, 0FFFFh
+        .word   0FFFFh, 0FFFFh, 0FFFFh
+
+start:
+        ldr     #a,0            ; SR0 = 0x00 -> периферия
+        ldr     #b,18h          ; SR1 = 0x18 -> конфиг порта B
+        ldr     #d,40h          ; SR3 = 0x40 -> ОЗУ (счётчики)
+
+        ; --- PB0 как активный выход (подрегистры конфигурации 0x1A) ---
+        movl    %b2,08h         ; выбрать подрег. 0 + WR
+        movl    %b2,01h         ; PT0=1
+        movl    %b2,09h         ; выбрать подрег. 1 + WR
+        movl    %b2,01h         ; OT0=1 (активный выход)
+        movl    %b2,0Ah         ; выбрать подрег. 2 + WR
+        movl    %b2,00h         ; RE0=0
+
+main_loop:
+        movl    %a2,01h         ; PB0 = 1 (порт B, 0x02)
+        ldr     #d,40h
+        movl    %d0,0FFh        ; внешний счётчик (ОЗУ 0x40)
+outer:
+        movl    %d1,0FFh        ; внутренний счётчик (ОЗУ 0x41)
+inner:
+        dec     %d1
+        jnz     inner
+        dec     %d0
+        jnz     outer
+
+        movl    %a2,00h         ; PB0 = 0
+        ldr     #d,40h
+        movl    %d0,0FFh
+outer2:
+        movl    %d1,0FFh
+inner2:
+        dec     %d1
+        jnz     inner2
+        dec     %d0
+        jnz     outer2
+
+        jmp     main_loop

@@ -216,6 +216,7 @@ dependencies = [
 name = "kr1878-protocol"
 version = "0.1.0"
 dependencies = [
+ "kr1878-core",
  "thiserror",
 ]
 

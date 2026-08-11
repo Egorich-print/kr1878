@@ -199,3 +199,108 @@ fn ports_command_lists_or_reports_none() {
         "stdout: {stdout}"
     );
 }
+
+#[test]
+fn run_executes_blink_and_dumps_state() {
+    let dir = tmp_dir();
+    let mic = dir.join("blink.mic");
+    write(
+        &mic,
+        "; blink loop with RAM counter\n\
+         ldr #a,0\n\
+         ldr #b,18h\n\
+         ldr #d,40h\n\
+         movl %b2,08h\n\
+         movl %b2,01h\n\
+         main:\n\
+         movl %a2,01h\n\
+         ldr #d,40h\n\
+         movl %d0,0FFh\n\
+         outer:\n\
+         movl %d1,0FFh\n\
+         inner:\n\
+         dec %d1\n\
+         jnz inner\n\
+         dec %d0\n\
+         jnz outer\n\
+         movl %a2,00h\n\
+         ldr #d,40h\n\
+         movl %d0,0FFh\n\
+         outer2:\n\
+         movl %d1,0FFh\n\
+         inner2:\n\
+         dec %d1\n\
+         jnz inner2\n\
+         dec %d0\n\
+         jnz outer2\n\
+         jmp main\n",
+    );
+
+    let r = run(&["run", mic.to_str().unwrap(), "--steps", "10000"]);
+    assert!(
+        r.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&r.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&r.stdout);
+    assert!(stdout.contains("instructions"), "stdout: {stdout}");
+
+    let d = run(&["run", mic.to_str().unwrap(), "--steps", "10000", "--dump"]);
+    assert!(d.status.success());
+    let stdout = String::from_utf8_lossy(&d.stdout);
+    assert!(stdout.contains("data memory"), "stdout: {stdout}");
+}
+
+#[test]
+fn assemble_writes_lst_and_sym() {
+    let dir = tmp_dir();
+    let mic = dir.join("demo.mic");
+    let lst = dir.join("demo.lst");
+    let sym = dir.join("demo.sym");
+    write(&mic, DEMO_MIC);
+
+    let out = run(&[
+        "assemble",
+        mic.to_str().unwrap(),
+        "-o",
+        dir.join("demo.sav").to_str().unwrap(),
+        "--lst",
+        lst.to_str().unwrap(),
+        "--sym",
+        sym.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(lst.exists());
+    assert!(sym.exists());
+    assert!(
+        std::fs::read_to_string(&lst).unwrap().contains("movl"),
+        "listing should contain mnemonics"
+    );
+}
+
+#[test]
+fn include_dir_resolves_include() {
+    let dir = tmp_dir();
+    let inc = dir.join("defs.mic");
+    write(&inc, "LED = 1\n");
+    let mic = dir.join("main.mic");
+    write(&mic, "#include \"defs.mic\"\nmovl %a0,LED\n");
+
+    let out = run(&[
+        "assemble",
+        mic.to_str().unwrap(),
+        "-o",
+        dir.join("out.sav").to_str().unwrap(),
+        "--include-dir",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // movl %a0,1 -> 0x4020
+    let bytes = std::fs::read(dir.join("out.sav")).unwrap();
+    assert_eq!(bytes[0], 0x20);
+    assert_eq!(bytes[1], 0x40);
+}
