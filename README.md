@@ -62,6 +62,13 @@ cargo run -- write demo.mic --backend usb --port /dev/ttyUSB0 \
 отдельным блоком. **Протокол write-only** — read/verify над USB-мостом не
 поддерживаются (нет read-back).
 
+## Примеры (скетчи)
+
+`examples/` — тестовые программы на `.mic`:
+
+- `blink_led.mic` — моргание светодиодом на PB0 (настройка порта через
+  подрегистры конфигурации, программная задержка). См. `examples/README.md`.
+
 ## Настольное приложение
 
 ```sh
@@ -82,6 +89,7 @@ crates/
   file-format/ # .sav, .dat, .arp, .sim
   cli/         # консольный интерфейс
 desktop/       # Tauri 2 + SvelteKit UI
+examples/      # тестовые скетчи (.mic)
 docs/          # ISA-справочник, исследование, стандарты, ADR, форматы файлов
 ```
 
