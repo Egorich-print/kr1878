@@ -8,6 +8,9 @@ members = [
     "crates/file-format",
     "crates/cli",
 ]
+# The Tauri desktop app has its own build graph (tauri-build, mobile targets)
+# and is built separately via `cargo build` inside desktop/src-tauri.
+exclude = ["desktop/src-tauri"]
 default-members = ["crates/cli"]
 
 [workspace.package]

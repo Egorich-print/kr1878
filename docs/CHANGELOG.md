@@ -59,6 +59,26 @@
   round-trip с `.sim`-state (вкл. mismatch), read dump config + program.
 - Тесты workspace: **77** зелёных (было 67; +4 `.sim`, +3 SimBackend, +3 CLI).
 
+### Added (Block 4 — Desktop UI, Tauri 2 + Svelte)
+- Новый каталог `desktop/` — настольное приложение, **вне** cargo-workspace
+  (отдельный граф сборки с `tauri-build`; в root `Cargo.toml` — `exclude`).
+- `desktop/src-tauri/src/ops.rs` — тестируемый слой команд над ядром:
+  `assemble` (.mic → words/listing/symbols), `connect` (backend + sim-state),
+  `program`, `verify`, `read`. Живой бэкенд живёт в Tauri-managed state
+  (`Mutex<Box<dyn Backend>>`), поэтому `write → verify → read` работают с
+  одним устройством (как физический программатор на одном чипе).
+- Типажи `Backend` (`core::backend`) и `Transport` (`protocol::transport`)
+  помечены `Send` — требование Tauri `State` (все реализации держат plain data).
+- `desktop/src-tauri/src/lib.rs` — команды Tauri: `list_backends`, `assemble`,
+  `connect`, `program`, `verify`, `read_device` (ошибки → `{message}`).
+- SvelteKit UI (`src/routes/+page.svelte`): выбор бэкенда mock/sim/lpt,
+  `.mic`-редактор с примером, OSC-флаг (hex), чекбокс erase,
+  кнопки Program+Verify / Verify / Read, дамп слов устройства, listing и symbols.
+- Сборка: `npm run check` (svelte-check 0 ошибок) и
+  `npm run tauri build -- --no-bundle` → `desktop/src-tauri/target/release/desktop`.
+- Тесты: 7 юнит-тестов в `ops.rs` (assemble, mock/sim round-trip, mismatch,
+  identity, connect); workspace по-прежнему **77** зелёных.
+
 ## Earlier
 - `core`: ISA (isa/operand), memory, ops, `Backend` trait — 12 тестов.
 - `file-format`: `.sav`/`.dat`/`.arp` — 12 тестов.

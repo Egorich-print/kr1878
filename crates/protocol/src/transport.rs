@@ -38,7 +38,7 @@ pub const STATUS_BUSY: u8 = 0x80;
 ///
 /// Each method maps to a single physical write or read; the protocol builds
 /// its waveforms from these three primitives plus [`Self::delay`].
-pub trait Transport {
+pub trait Transport: Send {
     /// Write the control register byte.
     fn write_control(&mut self, byte: u8) -> Result<()>;
     /// Write the data (command) register byte.

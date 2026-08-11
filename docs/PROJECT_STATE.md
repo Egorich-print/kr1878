@@ -103,11 +103,19 @@ ADR-реестр: `docs/adr/`. Открытые решения фиксирую�
 12. ✅ CLI productization: `--backend sim` (реальный protocol-путь без железа) +
     `--sim-state FILE` (состояние переживает запуски через `.sim`-снапшот) +
     авто-ассемблирование `.mic` в `write`/`verify`; 3 e2e-теста бинаря.
-13. 🔜 Desktop-приложение (Tauri/Svelte) тонкий UI.
+13. ✅ Desktop-приложение (Tauri 2 + SvelteKit): тонкий UI над собранным ядром.
+    Рабочий каталог `desktop/` (вне cargo-workspace — отдельный граф сборки `tauri-build`):
+    - `desktop/src-tauri` — Rust-крэйт с тестируемым слоем команд `ops.rs`
+      (assemble / connect / program / verify / read; живой бэкенд в Tauri-state,
+      чтобы `write → verify → read` работали с одним устройством) + 7 юнит-тестов.
+    - Типажи `Backend`/`Transport` помечены `Send` (требование Tauri-managed state).
+    - Svelte-UI: выбор бэкенда (mock/sim/lpt), `.mic`-редактор с ассемблированием,
+      OSC-флаг, program+verify / verify / read с дампом слов.
+    - Сборка `npm run tauri build -- --no-bundle` → `desktop/src-tauri/target/release/desktop`.
 14. 🔜 Документация пользователя + инструкция.
 
-> Статус этапа: **CLI этапа 3 готов, остался desktop-UI (этап 4).**
-> Блоки 1–3 (ADR-004): lint hygiene ✅ · protocol completion ✅ · WireBackend coverage ✅ · CLI productization ✅.
+> Статус этапа: **этап 4 (desktop-UI) реализован и собирается; осталась полировка UI + документация пользователя (этап 5).**
+> Блоки 1–3 (ADR-004): lint hygiene ✅ · protocol completion ✅ · WireBackend coverage ✅ · CLI productization ✅ · Desktop UI ✅.
 
 ---
 
@@ -118,9 +126,15 @@ cargo test --workspace              # юнит + интеграционные т
 cargo build --workspace             # сборка
 cargo clippy --workspace --all-targets -- -D warnings  # обязателен
 cargo fmt --all -- --check          # обязателен
+
+# Desktop (Tauri) — отдельный граф сборки:
+cd desktop && npm install
+npm run check                      # svelte-kit sync + svelte-check
+npm run tauri build -- --no-bundle # -> src-tauri/target/release/desktop
+cd src-tauri && cargo test && cargo clippy --all-targets && cargo fmt --check
 ```
 
-> Блоки 1–3 (ADR-004): lint hygiene ✅ · protocol completion ✅ · WireBackend coverage ✅ · CLI productization ✅ · UI 🔜.
+> Блоки 1–4 (ADR-004): lint hygiene ✅ · protocol completion ✅ · WireBackend coverage ✅ · CLI productization ✅ · Desktop UI ✅.
 
 ---
 

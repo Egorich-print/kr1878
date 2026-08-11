@@ -16,7 +16,9 @@ pub struct DeviceId {
 
 /// A driver for the KR1878VE1 programming hardware. Kept intentionally close to
 /// the operations the original toolchain exposes, so behaviour is preserved.
-pub trait Backend {
+/// `Send` so a backend can be shared across the app (e.g. Tauri state); every
+/// implementation owns only plain data or handles safe to transfer.
+pub trait Backend: Send {
     /// Return the connected device identity (may fail when not present).
     fn identify(&mut self) -> Result<DeviceId>;
 
