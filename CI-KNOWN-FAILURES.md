@@ -25,6 +25,9 @@ error: could not compile `kr1878-programmer` (lib) due to 4 previous errors
 
 - `crates/programmer/src/lpt.rs:167` — `libc::outb(val, addr);`
 - `crates/programmer/src/lpt.rs:186` — `return Ok(libc::inb(addr));`
+- `crates/programmer/src/lpt.rs:166` — `libc::ioperm(addr, 1, 1);` — `E0308: mismatched types`,
+  «expected `u64`, found `u16`» (функция существует, но сигнатура другая)
+- `crates/programmer/src/lpt.rs:185` — то же самое, второй вызов `ioperm`
 
 **Причина.** Таких функций в крейте `libc` **нет ни в одной версии** — проверено
 по исходникам 0.2.69, 0.2.155, 0.2.189, 0.2.191 и по docs.rs (`libc::outb` → 404).
