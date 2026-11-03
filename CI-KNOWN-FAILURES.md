@@ -1,72 +1,80 @@
 # Известные падения CI — что сейчас красное и почему
 
 > **Этот файл — маркер для агента и для владельца.** Каждый пункт воспроизведён
-> на реальном прогоне CI (2026-11-02) и указывает точное место `файл:строка`.
+> на реальном прогоне CI и указывает точное место `файл:строка`.
 > Починил пункт — убери его отсюда и скажи об этом в сообщении коммита.
 >
-> Контекст: репозиторий собирает Jenkins (multibranch-проект `kr1878`, ветка
-> `main`). Собственного CI на GitHub Actions у репозитория нет — Jenkins здесь
-> единственный гейт.
+> Контекст: репозиторий проверяют **два** независимых гейта, и оба зовут один
+> и тот же скрипт `scripts/gate.sh`:
+>
+>   * **Jenkins** (self-hosted, LXC 120 на pve-xeon, multibranch-папка
+>     `ci-github`, ветка `main`) — оркестратор аккаунта: единая очередь, общий
+>     кэш cargo, артефакты в `/srv/jenkins/archive`, релиз по тегу;
+>   * **GitHub Actions** (`.github/workflows/ci.yml`) — тонкая обёртка над тем же
+>     гейт-скриптом: видимый статус на странице репозитория и проверки на PR.
+>
+> Логика проверок живёт в репозитории, а не в обоих CI: Jenkinsfile находит
+> `scripts/gate.sh` и вызывает его вместо базового набора.
 
 ---
 
-## 1. `libc::outb` / `libc::inb` не существуют → крейт не компилируется — **открыто**
+## Известных падений нет — 2026-11-03
 
-**Симптом**
+Красных пунктов в этом списке сейчас нет. Последний прогон Jenkins
+(`ci-github/kr1878/main`) до починки — **#9, FAILURE**, с той же ошибкой,
+что и в issue #1; после починки гейт зелёный локально на macOS
+(Rust 1.99.0) и на цели `x86_64-unknown-linux-gnu` (Rust 1.99.1, тот же
+компилятор, что у репортёра).
 
-```
-error[E0425]: cannot find function `outb` in crate `libc`
-error[E0425]: cannot find function `inb` in crate `libc`
-error[E0308]: mismatched types
-error: could not compile `kr1878-programmer` (lib) due to 4 previous errors
-```
+Что было починено 2026-11-03 (историческая справка — из этого списка пункты
+убраны по правилу выше):
 
-**Где**
-
-- `crates/programmer/src/lpt.rs:167` — `libc::outb(val, addr);`
-- `crates/programmer/src/lpt.rs:186` — `return Ok(libc::inb(addr));`
-- `crates/programmer/src/lpt.rs:166` — `libc::ioperm(addr, 1, 1);` — `E0308: mismatched types`,
-  «expected `u64`, found `u16`» (функция существует, но сигнатура другая)
-- `crates/programmer/src/lpt.rs:185` — то же самое, второй вызов `ioperm`
-
-**Причина.** Таких функций в крейте `libc` **нет ни в одной версии** — проверено
-по исходникам 0.2.69, 0.2.155, 0.2.189, 0.2.191 и по docs.rs (`libc::outb` → 404).
-В `libc` есть только `ioperm`. То есть `kr1878-programmer` **никогда не
-компилировался**: в `Cargo.toml` воркспейса `default-members = ["crates/cli"]`,
-поэтому обычная сборка этот крейт не трогает. Полный гейт
-(`cargo test --workspace`) собирает весь воркспейс и находит это сразу.
-
-**Как починить**
-
-1. заменить вызовы на inline-ассемблер:
-   `core::arch::asm!("out dx, al", in("dx") addr, in("al") val)` /
-   `core::arch::asm!("in al, dx", out("al") val, in("dx") addr)`;
-2. либо взять крейт `x86` (у него есть `x86::in` / `x86::out`);
-3. либо вывести `kr1878-programmer` из воркспейса, если LPT-бэкенд больше не нужен.
-
-**Проверка**
-
-```bash
-cargo build -p kr1878-programmer
-cargo test --workspace
-```
+| Что | Где | Как починено |
+|---|---|---|
+| `libc::outb` / `libc::inb` не существуют ни в одной версии `libc` → крейт не компилировался на Linux x86_64 | `crates/programmer/src/lpt.rs` | портовый ввод-вывод переведён на inline-ассемблер `out dx, al` / `in al, dx` (в `libc` этих функций нет — это инструкции x86, а не вызовы libc); `ioperm` — с правильной сигнатурой `c_ulong` и проверкой результата |
+| `cargo fmt --all --check` показывал расхождения, а в базовом наборе Jenkins был только WARN | весь воркспейс | `cargo fmt --all`; в собственном гейте форматирование — полноценный гейт |
+| `cargo clippy` без `-D warnings`: новые линты Rust 1.99 проходили молча | весь воркспейс | гейт гоняет `cargo clippy --workspace --all-targets --all-features -- -D warnings` |
+| MSRV `rust-version = "1.85"` был объявлен, но **не наследовался ни одним крейтом** → clippy не учитывал MSRV и требовал API новее заявленного | `crates/*/Cargo.toml` | `rust-version.workspace = true` во всех шести крейтах |
+| неиспользуемый операнд `b3` в списке покрытия инструкций | `crates/core/src/isa.rs` | операнд использован по назначению (`Mov` с B-сегментом) — покрытие выросло, а не просто подавлено |
+| `vec!` там, где хватает массива | `crates/programmer/src/usb.rs` | массив |
+| в репозитории **не было родного гейт-скрипта** → Jenkins гонял базовый набор, а `cargo test --all-targets` без `--workspace` не выполнял юнит-тесты пяти крейтов | `scripts/gate.sh` | добавлен родной гейт; Jenkinsfile вызывает его вместо базового набора |
+| копия `Jenkinsfile` в репозитории отставала от каноничной: без `flock --close` (зависшие сборки) и с урезанным таймаутом | `Jenkinsfile` | заменён на каноничный `infrastructure/jenkins/Jenkinsfile.generic` |
 
 ---
 
-## 2. `cargo fmt --all --check` показывает расхождения — **открыто**
+## Требования к сборочному окружению
 
-Тот же прогон падает на форматировании: код отформатирован не под `rustfmt`.
-Гейт в CI начинается с `cargo fmt --all --check`, поэтому пункт 1 не виден, пока
-не пройден формат.
+Системная зависимость одна, и она неочевидна: крейт `kr1878-programmer` тянет
+`serialport` → `libudev-sys`, а его `build.rs` ищет системную библиотеку
+`libudev` через `pkg-config`. Без пакета сборка падает с
 
-```bash
-cargo fmt --all
+```
+The system library `libudev` required by crate `libudev-sys` was not found
 ```
 
----
+Где требование выполнено:
 
-## 3. Требования к сборочному окружению
+| Среда | Как |
+|---|---|
+| Контейнер Jenkins (LXC 120) | `libudev-dev` установлен пакетом `infrastructure/proxmox/xeon-install-jenkins-build-deps.sh` в LXC 120 |
+| GitHub Actions | `.github/workflows/ci.yml` ставит `libudev-dev` и `pkg-config` явно |
 
-Для этого репозитория в контейнере сборки нужен `libudev-dev`: крейт
-`libudev-sys` ищет системную библиотеку через `pkg-config` и без неё падает с
-«The system library `libudev` required by crate `libudev-sys` was not found».
+## Как устроен CI
+
+* **Тулчейн** — `rust-toolchain.toml`: канал `1.99.0`, профиль `minimal`,
+  компоненты `rustfmt` и `clippy`. В контейнере Jenkins эта версия уже
+  стоит (там же `1.98.0` и `stable`), rustup доустанавливает её сам.
+* **MSRV** — `rust-version = "1.85"` в корневом `Cargo.toml`. Крейты обязаны
+  наследовать его (`rust-version.workspace = true`): без этого объявление
+  ничего не значит, и clippy начинает требовать API новее заявленного.
+* **Гейт** — `scripts/gate.sh`: `cargo fmt --all -- --check`, `cargo clippy
+  --workspace --all-targets --all-features -- -D warnings`, `cargo test
+  --workspace --all-targets`, `cargo test --workspace --doc` и проверка дерева
+  на зашитые ключи.
+* **Платформенная ловушка** — код LPT-бэкенда за
+  `#[cfg(all(target_os = "linux", target_arch = "x86_64"))]`, поэтому на macOS
+  и Windows он вырезается из сборки, и крейт там компилируется. Ошибка,
+  видимая только на Linux, на macOS не проявляется: проверяй Linux-таргет
+  явно — `KR1878_GATE_LINUX_TARGET=1 ./scripts/gate.sh` (нужен установленный
+  target `x86_64-unknown-linux-gnu`; на macOS дополнительно требуется
+  системная libudev для `libudev-sys`).

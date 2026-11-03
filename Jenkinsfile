@@ -43,13 +43,30 @@
 //   /srv/jenkins/archive               -> sdc1 (78 МБ/с) — артефакты
 //
 // Блокировка: flock /var/lib/jenkins/ci/build.lock (путь внутри контейнера).
+//
+// `--close` обязателен на каждом вызове. flock(2) держит блокировку на
+// открытом описании файла, и любой потомок, унаследовавший этот дескриптор,
+// удерживает её после выхода родителя. Тест-хелпер, который переживает
+// тест (в BTP это `btp-server` из проверки epipe), унаследовал дескриптор
+// гейта и держал эксклюзивную блокировку **после** того, как гейт отработал.
+// Следующая сборка вставала на `flock` молча — ноль строк в консоли — и
+// упиралась в таймаут пайплайна. `--close` закрывает дескриптор в дочернем
+// процессе: блокировку держит сам `flock` и отпускает её, когда команда
+// завершилась, а осиротевший потомок её уже не удерживает.
 
 pipeline {
     agent any
 
     options {
         timestamps()
-        timeout(time: 120, unit: 'MINUTES')
+        // The pipeline timeout is a safety net against a stuck build, not a
+        // schedule: the executor is shared and serial, so a build that is
+        // aborted still blocks every other repository behind it. 120 minutes
+        // was too short for a repository whose own gate takes minutes and
+        // whose release build then rebuilds the whole workspace in release
+        // mode — BTP build #23 (2026-11-03) was aborted by this timeout with
+        // the gate already green (see CI-KNOWN-FAILURES.md § Jenkins).
+        timeout(time: 240, unit: 'MINUTES')
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '10'))
         skipDefaultCheckout(true)
@@ -155,7 +172,7 @@ pipeline {
                         sh """
                             set -e
                             chmod +x '${env.REPO_GATE}' 2>/dev/null || true
-                            flock "${LOCK_FILE}" './${env.REPO_GATE}'
+                            flock --close "${LOCK_FILE}" './${env.REPO_GATE}'
                         """
                     } else {
                         switch (env.PROJECT_TYPE) {
@@ -168,11 +185,11 @@ pipeline {
                                     # fmt — предупреждение: в части репозиториев
                                     # (Antigravity) дерево намеренно не отформатировано,
                                     # и строгий гейт остаётся в CI самого репозитория.
-                                    flock "${LOCK_FILE}" cargo fmt --all -- --check || echo "WARN: cargo fmt --check не пройден (строгий гейт — в CI репозитория)"
+                                    flock --close "${LOCK_FILE}" cargo fmt --all -- --check || echo "WARN: cargo fmt --check не пройден (строгий гейт — в CI репозитория)"
                                     # clippy без -D warnings: реальные ошибки компиляции
                                     # валят сборку, а предупреждения — зона CI репозитория.
-                                    flock "${LOCK_FILE}" cargo clippy --all-targets --all-features
-                                    flock "${LOCK_FILE}" cargo test --all-targets
+                                    flock --close "${LOCK_FILE}" cargo clippy --all-targets --all-features
+                                    flock --close "${LOCK_FILE}" cargo test --all-targets
                                 '''
                                 break
                             case 'node':
@@ -181,15 +198,15 @@ pipeline {
                                     node --version
                                     npm --version
                                     npm ci
-                                    flock "${LOCK_FILE}" npm run lint
-                                    flock "${LOCK_FILE}" npm test
+                                    flock --close "${LOCK_FILE}" npm run lint
+                                    flock --close "${LOCK_FILE}" npm test
                                 '''
                                 break
                             case 'make':
                                 sh '''
                                     set -e
                                     if command -v just >/dev/null 2>&1 && [ -f Justfile ]; then
-                                      flock "${LOCK_FILE}" just --list >/dev/null
+                                      flock --close "${LOCK_FILE}" just --list >/dev/null
                                     else
                                       make -n >/dev/null
                                     fi
@@ -231,7 +248,7 @@ pipeline {
                         case 'rust':
                             sh '''
                                 set -e
-                                flock "${LOCK_FILE}" cargo build --release
+                                flock --close "${LOCK_FILE}" cargo build --release
                                 mkdir -p /srv/jenkins/archive/"${JOB_NAME}"
                                 # Копируем бинарники в архив через xargs -0 + cp -t.
                                 #
@@ -251,7 +268,7 @@ pipeline {
                         case 'node':
                             sh '''
                                 set -e
-                                flock "${LOCK_FILE}" npm run build --if-present
+                                flock --close "${LOCK_FILE}" npm run build --if-present
                             '''
                             break
                         default:

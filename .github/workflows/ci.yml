@@ -1,0 +1,56 @@
+# GitHub Actions для kr1878 — тонкая обёртка над родным гейтом репозитория.
+#
+# Логика проверок живёт НЕ здесь, а в scripts/gate.sh: этот workflow только
+# готовит окружение и вызывает гейт. Причина та же, что и в Jenkinsfile:
+# «оркестратор не дублирует проверки репозитория». Тот же гейт гоняет и
+# Jenkins (LXC 120) — одна и та же команда, один и тот же вердикт.
+#
+# ПРИЧИНА ОТДЕЛЬНОГО РАБОТОСПОСОБНОГО CI, А НЕ ДУБЛЬ:
+#   * Actions даёт видимый статус на странице репозитория и проверки на PR —
+#     для чужого репортёра (issue #1) это способ увидеть, что сборка чиста;
+#   * Jenkins — оркестратор аккаунта: единая очередь, общий кэш cargo,
+#     артефакты в /srv/jenkins/archive и релиз по тегу.
+#
+# СИСТЕМНЫЕ ЗАВИСИМОСТИ: kr1878-programmer -> serialport -> libudev-sys, а его
+# build.rs ищет системную libudev через pkg-config. На образе ubuntu-latest
+# пакет ставится явно, чтобы гейт падал с понятным сообщением, а не с
+# «The system library `libudev` required by crate `libudev-sys` was not found».
+#
+# ТУЛЧЕЙН: версия берётся из rust-toolchain.toml репозитория (1.99.0) —
+# rustup на образе доустанавливает её сам; отдельный setup-шаг не нужен.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: системные зависимости сборки
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libudev-dev pkg-config
+
+      - name: тулчейн
+        run: |
+          rustup show active-toolchain
+          rustc --version
+          cargo --version
+
+      - name: родной гейт репозитория
+        run: ./scripts/gate.sh
