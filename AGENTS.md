@@ -77,4 +77,5 @@ inline-ассемблером `out dx, al` / `in al, dx` (см. `port_io` в
 | `crates/cli` | CLI `kr1878` (имя пакета — `kr1878`, бинарник — `kr1878`) |
 | `desktop/` | приложение Tauri 2 + Svelte, **вне** воркспейса (свой граф сборки) |
 | `scripts/gate.sh` | родной гейт репозитория |
+| `docs/TOOLCHAIN_OPTIONS.md` | варианты компиляции под ТЕСЕЙ (C/C++/Zig/Rust/Goose/Lua/Lisp), IDE и API |
 | `docs/` | архитектура, форматы файлов, протокол железа, ISA |
