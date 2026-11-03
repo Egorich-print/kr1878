@@ -1,0 +1,17 @@
+[package]
+name = "kr1878-cc"
+description = "C compiler for the KR1878VE1 (TESEI) core: chibicc frontend + TESEI backend"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# deliberately none: the compiler proper is C (vendored chibicc), and the
+# Rust side is a thin FFI wrapper.
+
+[dev-dependencies]
+# The golden tests compile C, assemble the result with our own assembler and
+# run it in the simulator.
+kr1878-core = { path = "../core" }
+kr1878-assembler = { path = "../assembler" }

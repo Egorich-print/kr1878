@@ -167,6 +167,7 @@ dependencies = [
  "anyhow",
  "clap",
  "kr1878-assembler",
+ "kr1878-cc",
  "kr1878-core",
  "kr1878-file-format",
  "kr1878-programmer",
@@ -181,6 +182,14 @@ dependencies = [
  "kr1878-core",
  "thiserror",
  "tracing",
+]
+
+[[package]]
+name = "kr1878-cc"
+version = "0.1.0"
+dependencies = [
+ "kr1878-assembler",
+ "kr1878-core",
 ]
 
 [[package]]

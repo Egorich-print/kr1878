@@ -87,6 +87,27 @@ enum Cmd {
         #[arg(long)]
         sym: Option<PathBuf>,
     },
+    /// Compile a C source to a `.sav` image.
+    ///
+    /// The C front end is chibicc (vendored, MIT); the back end targets the
+    /// TESEI core. The generated assembly goes through our own assembler, so
+    /// the image is identical in form to one produced from `.mic` by hand.
+    Compile {
+        /// C source file.
+        source: PathBuf,
+        /// Output machine image (default: `<source>.sav`).
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Also write the data EEPROM bytes as a `.dat` hex file.
+        #[arg(short, long)]
+        dat: Option<PathBuf>,
+        /// Print the generated assembly instead of writing an image.
+        #[arg(long)]
+        asm: bool,
+        /// Also write the assembler listing to this file (`.lst`).
+        #[arg(long)]
+        lst: Option<PathBuf>,
+    },
     /// Read the device into `.sav` / `.dat` files.
     Read {
         #[arg(short, long, value_enum, default_value_t = BackendKind::Mock)]
@@ -185,6 +206,13 @@ fn main() -> Result<()> {
             lst,
             sym,
         } => cmd_assemble(source, out, dat, lst, sym),
+        Cmd::Compile {
+            source,
+            out,
+            dat,
+            asm,
+            lst,
+        } => cmd_compile(source, out, dat, asm, lst),
         Cmd::Read {
             backend,
             out,
@@ -338,6 +366,46 @@ fn cmd_assemble(
         std::fs::write(&sym_path, text)
             .with_context(|| format!("write symbols {}", sym_path.display()))?;
         println!("assemble: symbols -> {}", sym_path.display());
+    }
+    Ok(())
+}
+
+/// Compiles a C source into a machine image.
+///
+/// The C front end is chibicc (vendored, MIT) and the back end targets the
+/// TESEI core; the resulting assembly goes through our own assembler, so the
+/// image has exactly the same form as one assembled from `.mic` by hand.
+fn cmd_compile(
+    source: PathBuf,
+    out: Option<PathBuf>,
+    dat: Option<PathBuf>,
+    asm_only: bool,
+    lst: Option<PathBuf>,
+) -> Result<()> {
+    let text = std::fs::read_to_string(&source)
+        .with_context(|| format!("cannot read {}", source.display()))?;
+    let name = source.to_string_lossy().into_owned();
+    let compiled = kr1878_cc::compile(&text, &name)
+        .map_err(|e| anyhow::anyhow!("compilation failed:\n{e}"))?;
+
+    if asm_only {
+        print!("{}", compiled.asm);
+        return Ok(());
+    }
+
+    let result = assemble_mic(&compiled.asm)?;
+    let out = out.unwrap_or_else(|| source.with_extension("sav"));
+    let words = result.image.program;
+    write_sav(&out, &words)?;
+    println!("compile: {} words -> {}", words.len(), out.display());
+    if let Some(dat_path) = dat {
+        write_dat(&dat_path, &result.image.data)?;
+        println!("compile: data -> {}", dat_path.display());
+    }
+    if let Some(lst_path) = lst {
+        std::fs::write(&lst_path, &result.listing)
+            .with_context(|| format!("write listing {}", lst_path.display()))?;
+        println!("compile: listing -> {}", lst_path.display());
     }
     Ok(())
 }
