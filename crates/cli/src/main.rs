@@ -203,7 +203,9 @@ fn main() -> Result<()> {
             port,
             gen_mode,
             no_delay,
-        } => cmd_write(image, dat, backend, osc, arp, no_erase, sim_state, port, gen_mode, no_delay),
+        } => cmd_write(
+            image, dat, backend, osc, arp, no_erase, sim_state, port, gen_mode, no_delay,
+        ),
         Cmd::Verify {
             image,
             dat,
@@ -214,7 +216,12 @@ fn main() -> Result<()> {
             port,
         } => cmd_verify(image, dat, backend, osc, arp, sim_state, port),
         Cmd::Ports => cmd_ports(),
-        Cmd::Run { image, steps, dump, eeprom } => cmd_run(image, steps, dump, eeprom),
+        Cmd::Run {
+            image,
+            steps,
+            dump,
+            eeprom,
+        } => cmd_run(image, steps, dump, eeprom),
     }
 }
 
@@ -254,7 +261,10 @@ fn load_include(name: &str) -> std::io::Result<String> {
     std::fs::read_to_string(&candidate).map_err(|e| {
         std::io::Error::new(
             e.kind(),
-            format!("cannot load `#include \"{name}\"` from {}: {e}", candidate.display()),
+            format!(
+                "cannot load `#include \"{name}\"` from {}: {e}",
+                candidate.display()
+            ),
         )
     })
 }
@@ -320,7 +330,10 @@ fn cmd_assemble(
         let mut text = String::new();
         for (name, v) in result.symbols.globals() {
             let kind = if v.is_label { "label" } else { "const" };
-            text.push_str(&format!("{kind:6} {name:<24} = 0x{:03X} ; line {}\n", v.value, v.line));
+            text.push_str(&format!(
+                "{kind:6} {name:<24} = 0x{:03X} ; line {}\n",
+                v.value, v.line
+            ));
         }
         std::fs::write(&sym_path, text)
             .with_context(|| format!("write symbols {}", sym_path.display()))?;
@@ -378,7 +391,9 @@ fn cmd_write(
         let mode = gen_mode.unwrap_or(GenKind::QuartzHigh);
         let mut b = make_usb(port.as_deref(), !no_delay, mode)?;
         if let Some(osc) = osc {
-            eprintln!("note: USB bridge derives the config word from `--gen`/`--no-delay`, ignoring `--osc {osc:02X}`");
+            eprintln!(
+                "note: USB bridge derives the config word from `--gen`/`--no-delay`, ignoring `--osc {osc:02X}`"
+            );
         }
         if no_erase {
             eprintln!("note: USB bridge ignores `--no-erase` (sync block is always sent)");
@@ -459,14 +474,23 @@ fn cmd_run(image: PathBuf, steps: u64, dump: bool, eeprom: bool) -> Result<()> {
     } else if done < steps {
         println!("sim: program ended early (STOP/error)");
     } else {
-        eprintln!(
-            "sim: step limit reached without STOP — program may be an infinite loop"
-        );
+        eprintln!("sim: step limit reached without STOP — program may be an infinite loop");
     }
-    println!("sim: RS = 0x{:02X} (C={} Z={} S={} IE={} OF={} DC={})",
-        cpu.rs.to_byte(), cpu.rs.c as u8, cpu.rs.z as u8, cpu.rs.s as u8,
-        cpu.rs.ie as u8, cpu.rs.of as u8, cpu.rs.dc as u8);
-    println!("sim: port A = 0x{:02X}, port B = 0x{:02X}", cpu.port_a(), cpu.port_b());
+    println!(
+        "sim: RS = 0x{:02X} (C={} Z={} S={} IE={} OF={} DC={})",
+        cpu.rs.to_byte(),
+        cpu.rs.c as u8,
+        cpu.rs.z as u8,
+        cpu.rs.s as u8,
+        cpu.rs.ie as u8,
+        cpu.rs.of as u8,
+        cpu.rs.dc as u8
+    );
+    println!(
+        "sim: port A = 0x{:02X}, port B = 0x{:02X}",
+        cpu.port_a(),
+        cpu.port_b()
+    );
     if dump {
         println!("sim: data memory:");
         for row in 0..16 {
@@ -483,7 +507,10 @@ fn cmd_run(image: PathBuf, steps: u64, dump: bool, eeprom: bool) -> Result<()> {
         println!("sim: data EEPROM:");
         for row in 0..4 {
             let base = row * 16;
-            let bytes: Vec<String> = e[base..base + 16].iter().map(|b| format!("{b:02X}")).collect();
+            let bytes: Vec<String> = e[base..base + 16]
+                .iter()
+                .map(|b| format!("{b:02X}"))
+                .collect();
             println!("  C{base:02X}: {}", bytes.join(" "));
         }
     }

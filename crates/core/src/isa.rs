@@ -351,14 +351,30 @@ impl Instruction {
 
         // ---- push/pop: `0000000000010/3` in bits 6..3 (reg in 2..0) ----
         match word >> 3 {
-            0b0000000000010 => return Ok(Push { reg: (word & 0x7) as u8 }),
-            0b0000000000011 => return Ok(Pop { reg: (word & 0x7) as u8 }),
+            0b0000000000010 => {
+                return Ok(Push {
+                    reg: (word & 0x7) as u8,
+                });
+            }
+            0b0000000000011 => {
+                return Ok(Pop {
+                    reg: (word & 0x7) as u8,
+                });
+            }
             _ => {}
         }
         // ---- sst/cst: `000000011000/100` in bits 15..4 (mask in 3..0) ----
         match word >> 4 {
-            0b000000011000 => return Ok(Sst { mask: (word & 0x0F) as u8 }),
-            0b000000011100 => return Ok(Cst { mask: (word & 0x0F) as u8 }),
+            0b000000011000 => {
+                return Ok(Sst {
+                    mask: (word & 0x0F) as u8,
+                });
+            }
+            0b000000011100 => {
+                return Ok(Cst {
+                    mask: (word & 0x0F) as u8,
+                });
+            }
             _ => {}
         }
 
@@ -447,7 +463,8 @@ impl Instruction {
 
         Err(Error::InvalidOpcode(word))
     }
-}/// opcode(6) | src(5) | dst(5)
+}
+/// opcode(6) | src(5) | dst(5)
 fn two_op(opcode: u16, dst: u16, src: u16) -> u16 {
     ((opcode & 0x3F) << 10) | (src << 5) | (dst & 0x1F)
 }
@@ -572,21 +589,50 @@ mod tests {
         let b3 = Operand::new(Segment::B, 3);
         vec![
             Mov { dst: d0, src: a5 },
+            // B-segment destination: the operand field is symmetric
+            // (encode/decode), so it round-trips like the A/D ones.
+            Mov { dst: b3, src: a5 },
             Cmp { dst: d0, src: a5 },
             Sub { dst: d0, src: a5 },
             Add { dst: d0, src: a5 },
             And { dst: d0, src: a5 },
             Or { dst: d0, src: a5 },
             Xor { dst: d0, src: a5 },
-            Movl { dst: d0, value: 0xFF },
-            Cmpl { dst: d0, value: 0x55 },
+            Movl {
+                dst: d0,
+                value: 0xFF,
+            },
+            Cmpl {
+                dst: d0,
+                value: 0x55,
+            },
             Addl { dst: d0, value: 31 },
             Subl { dst: d0, value: 1 },
-            Bic { dst: d0, tetrad: 0xF, place: Place::Low },
-            Bic { dst: d0, tetrad: 0xF, place: Place::High },
-            Bis { dst: d0, tetrad: 0x5, place: Place::Low },
-            Btg { dst: d0, tetrad: 0x3, place: Place::High },
-            Btt { dst: d0, tetrad: 0xA, place: Place::Low },
+            Bic {
+                dst: d0,
+                tetrad: 0xF,
+                place: Place::Low,
+            },
+            Bic {
+                dst: d0,
+                tetrad: 0xF,
+                place: Place::High,
+            },
+            Bis {
+                dst: d0,
+                tetrad: 0x5,
+                place: Place::Low,
+            },
+            Btg {
+                dst: d0,
+                tetrad: 0x3,
+                place: Place::High,
+            },
+            Btt {
+                dst: d0,
+                tetrad: 0xA,
+                place: Place::Low,
+            },
             Swap(d0),
             Neg(d0),
             Not(d0),
@@ -597,7 +643,10 @@ mod tests {
             Rrc(d0),
             Adc(d0),
             Sbc(d0),
-            Ldr { reg: 7, value: 0x42 },
+            Ldr {
+                reg: 7,
+                value: 0x42,
+            },
             Mfpr { dst: d0, reg: 3 },
             Mtpr { reg: 6, src: a5 },
             Push { reg: 2 },

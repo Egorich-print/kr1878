@@ -221,7 +221,9 @@ impl Cpu {
         let base = self.sr[op.segment().sel() as usize] as usize;
         let addr = base + op.index() as usize;
         if addr >= DATA_MEM_BYTES {
-            return Err(Error::Other(format!("cpu: data address 0x{addr:02X} out of range")));
+            return Err(Error::Other(format!(
+                "cpu: data address 0x{addr:02X} out of range"
+            )));
         }
         Ok(addr)
     }
@@ -267,7 +269,9 @@ impl Cpu {
     fn ir0_addr(&self) -> Result<usize> {
         let a = ((self.sr[5] as usize) << 8) | self.sr[4] as usize;
         if a >= DATA_MEM_BYTES {
-            return Err(Error::Other(format!("cpu: IR0 address 0x{a:04X} out of range")));
+            return Err(Error::Other(format!(
+                "cpu: IR0 address 0x{a:04X} out of range"
+            )));
         }
         Ok(a)
     }
@@ -276,7 +280,9 @@ impl Cpu {
     fn ir1_addr(&self) -> Result<usize> {
         let a = ((self.sr[7] as usize) << 8) | self.sr[6] as usize;
         if a >= DATA_MEM_BYTES {
-            return Err(Error::Other(format!("cpu: IR1 address 0x{a:04X} out of range")));
+            return Err(Error::Other(format!(
+                "cpu: IR1 address 0x{a:04X} out of range"
+            )));
         }
         Ok(a)
     }
@@ -327,7 +333,9 @@ impl Cpu {
 
     fn write_mem(&mut self, addr: usize, v: u8) -> Result<()> {
         if addr >= DATA_MEM_BYTES {
-            return Err(Error::Other(format!("cpu: write 0x{addr:02X} out of range")));
+            return Err(Error::Other(format!(
+                "cpu: write 0x{addr:02X} out of range"
+            )));
         }
         self.data[addr] = v;
         Ok(())
@@ -742,9 +750,7 @@ mod tests {
         // Write via ISA instead: movl %d0, 0x55 (SR3=0xC0 default? set SR0=0)
         // Use a program: ldr #a,0 ; movl %a0,55h
         let prog = [
-            Instruction::Ldr { reg: 0, value: 0 }
-                .encode()
-                .unwrap(),
+            Instruction::Ldr { reg: 0, value: 0 }.encode().unwrap(),
             Instruction::Movl {
                 dst: Operand::new(Segment::A, 0),
                 value: 0x55,
@@ -763,9 +769,7 @@ mod tests {
     fn inc_increments_memory() {
         // inc %a0 with SR0=0: data[0] 0x10 -> 0x11
         let prog = [
-            Instruction::Ldr { reg: 0, value: 0 }
-                .encode()
-                .unwrap(),
+            Instruction::Ldr { reg: 0, value: 0 }.encode().unwrap(),
             Instruction::Movl {
                 dst: Operand::new(Segment::A, 0),
                 value: 0x10,
@@ -789,9 +793,7 @@ mod tests {
     fn branch_and_loop() {
         // Loop: movl %a0,2 ; dec %a0 ; jnz (back) ; stop
         let mut prog = vec![
-            Instruction::Ldr { reg: 0, value: 0 }
-                .encode()
-                .unwrap(),
+            Instruction::Ldr { reg: 0, value: 0 }.encode().unwrap(),
             Instruction::Movl {
                 dst: Operand::new(Segment::A, 0),
                 value: 2,
@@ -852,7 +854,12 @@ mod tests {
         // RAM (0x40) counting down with a conditional loop, then PB0=0, repeat.
         let mut prog = vec![Instruction::Ldr { reg: 0, value: 0 }.encode().unwrap()];
         prog.push(
-            Instruction::Ldr { reg: 3, value: 0x40 }.encode().unwrap(),
+            Instruction::Ldr {
+                reg: 3,
+                value: 0x40,
+            }
+            .encode()
+            .unwrap(),
         );
         let set_high = prog.len() as u16;
         prog.push(
@@ -928,7 +935,10 @@ mod tests {
                 pb0 = c.port_b();
             }
         }
-        assert!(saw_high && saw_low, "PB0 toggling expected: {saw_high}/{saw_low}");
+        assert!(
+            saw_high && saw_low,
+            "PB0 toggling expected: {saw_high}/{saw_low}"
+        );
         let _ = set_low;
     }
 }

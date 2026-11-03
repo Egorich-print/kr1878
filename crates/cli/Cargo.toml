@@ -3,6 +3,7 @@ name = "kr1878"
 description = "CLI for the KR1878VE1 toolchain"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [[bin]]

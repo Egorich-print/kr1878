@@ -182,16 +182,17 @@ fn usb_write_without_port_reports_port_required() {
     let out = run(&["write", mic.to_str().unwrap(), "--backend", "usb"]);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("requires `--port"),
-        "stderr: {stderr}"
-    );
+    assert!(stderr.contains("requires `--port"), "stderr: {stderr}");
 }
 
 #[test]
 fn ports_command_lists_or_reports_none() {
     let out = run(&["ports"]);
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     // Either a list of ports or a "no ports" message; never an error.
     assert!(
@@ -269,7 +270,11 @@ fn assemble_writes_lst_and_sym() {
         "--sym",
         sym.to_str().unwrap(),
     ]);
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(lst.exists());
     assert!(sym.exists());
     assert!(

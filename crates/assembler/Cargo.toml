@@ -3,6 +3,7 @@ name = "kr1878-assembler"
 description = "TESSA assembler for the KR1878VE1 (source .mic -> memory image/list/symbols)"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

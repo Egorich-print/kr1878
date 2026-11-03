@@ -86,8 +86,7 @@ pub fn assemble_with_loader(source: &str, loader: Loader<'_>) -> Result<Assemble
         // emitted before it (words [0, pc-2)), matching the official toolchain
         // which folds the program bytes with carry propagation.
         let code_len = pc.saturating_sub(2);
-        let checksum =
-            kr1878_core::crc::endc_checksum3(img.program[..code_len].iter().copied());
+        let checksum = kr1878_core::crc::endc_checksum3(img.program[..code_len].iter().copied());
         // Write the three bytes into the program body at the `.endc` position;
         // the third byte lives in the low half of the following word (matching
         // `.byte` layout).
@@ -630,7 +629,12 @@ fn encode_word(
         // liah #7,addr   -> ldr  #7, hi(addr)
         "mial" | "mdal" => {
             let dst = two(0)?;
-            let v = eval_expr(&parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?, pc, syms, span)?;
+            let v = eval_expr(
+                &parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?,
+                pc,
+                syms,
+                span,
+            )?;
             Instruction::Movl {
                 dst,
                 value: (v & 0xFF) as u8,
@@ -639,7 +643,12 @@ fn encode_word(
         }
         "miah" => {
             let dst = two(0)?;
-            let v = eval_expr(&parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?, pc, syms, span)?;
+            let v = eval_expr(
+                &parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?,
+                pc,
+                syms,
+                span,
+            )?;
             Instruction::Movl {
                 dst,
                 value: ((v >> 8) & 0xFF) as u8,
@@ -648,7 +657,12 @@ fn encode_word(
         }
         "mdah" => {
             let dst = two(0)?;
-            let v = eval_expr(&parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?, pc, syms, span)?;
+            let v = eval_expr(
+                &parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?,
+                pc,
+                syms,
+                span,
+            )?;
             Instruction::Movl {
                 dst,
                 value: ((v >> 8) & 0x3F) as u8,
@@ -661,7 +675,12 @@ fn encode_word(
                     .ok_or_else(|| AsmError::new(span, "missing operand"))?,
                 span,
             )?;
-            let v = eval_expr(&parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?, pc, syms, span)?;
+            let v = eval_expr(
+                &parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?,
+                pc,
+                syms,
+                span,
+            )?;
             Instruction::Ldr {
                 reg,
                 value: (v & 0xFF) as u8,
@@ -674,7 +693,12 @@ fn encode_word(
                     .ok_or_else(|| AsmError::new(span, "missing operand"))?,
                 span,
             )?;
-            let v = eval_expr(&parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?, pc, syms, span)?;
+            let v = eval_expr(
+                &parse_expr(ops.get(1).unwrap_or(&Vec::new()), span)?,
+                pc,
+                syms,
+                span,
+            )?;
             Instruction::Ldr {
                 reg,
                 value: ((v >> 8) & 0xFF) as u8,

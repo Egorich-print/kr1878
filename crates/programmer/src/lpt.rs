@@ -11,9 +11,13 @@
 //!   wire and the decoder un-inverts them, matching the protocol's active-high
 //!   levels used by the bit-bang driver.
 //!
-//! Raw port I/O is only available where the OS permits it (Linux/FreeBSD on
-//! x86-64 via `ioperm`+`inb`/`outb`). Elsewhere all I/O returns a clear
-//! `backend unavailable` error so the crate stays cross-platform.
+//! Raw port I/O is only available where the OS permits it: Linux on x86-64,
+//! where `ioperm(2)` grants access to the port and the transfer itself is the
+//! `out dx, al` / `in al, dx` instruction. The `libc` crate exposes `ioperm`
+//! but **not** `inb`/`outb` — those are x86 instructions, not libc calls — so
+//! the transfer is emitted as inline assembly.
+//! Elsewhere all I/O returns a clear `backend unavailable` error so the crate
+//! stays cross-platform.
 
 use std::time::Duration;
 
@@ -155,37 +159,120 @@ impl Transport for LptTransport {
     }
 }
 
-fn write_port(addr: u16, val: u8) -> Result<()> {
-    #[cfg(all(
-        any(target_os = "linux", target_os = "freebsd"),
-        target_arch = "x86_64"
-    ))]
-    {
-        // SAFETY: grants access to the single port address and writes it.
-        unsafe {
-            libc::ioperm(addr, 1, 1);
-            libc::outb(val, addr);
-        }
-        return Ok(());
+/// Raw port-I/O primitives for Linux/x86-64.
+///
+/// `libc` provides `ioperm()` on Linux but has no `inb()`/`outb()`: those are
+/// x86 instructions (`out dx, al` / `in al, dx`), not libc functions — which
+/// is why the crate could never compile with them. Emitting the instructions
+/// directly is also what the original bit-bang driver did.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+mod port_io {
+    /// Grant this process access to the single I/O port `addr`.
+    ///
+    /// Returns `false` when the kernel refuses: without `CAP_SYS_RAWIO` (or
+    /// root) the following `out`/`in` would fault the process.
+    ///
+    /// # Safety
+    ///
+    /// The caller must only touch ports it is allowed to access.
+    pub unsafe fn grant(addr: u16) -> bool {
+        // The explicit `unsafe` block is required even inside an `unsafe fn`
+        // since edition 2024 (`unsafe_op_in_unsafe_fn`).
+        unsafe { libc::ioperm(addr as libc::c_ulong, 1, 1) == 0 }
     }
+
+    /// Write `val` to the I/O port `addr`.
+    ///
+    /// # Safety
+    ///
+    /// `grant(addr)` must have succeeded for this address.
+    pub unsafe fn out(addr: u16, val: u8) {
+        // `out dx, al`: AL -> port addressed by DX. The instruction touches
+        // neither the stack nor the flags, hence `nostack`/`preserves_flags`.
+        // The explicit `unsafe` block is required even inside an `unsafe fn`
+        // since edition 2024 (`unsafe_op_in_unsafe_fn`).
+        unsafe {
+            core::arch::asm!(
+                "out dx, al",
+                in("dx") addr,
+                in("al") val,
+                options(nostack, preserves_flags),
+            );
+        }
+    }
+
+    /// Read a byte from the I/O port `addr`.
+    ///
+    /// # Safety
+    ///
+    /// `grant(addr)` must have succeeded for this address.
+    pub unsafe fn in_byte(addr: u16) -> u8 {
+        let mut val: u8 = 0;
+        // `in al, dx`: port addressed by DX -> AL. The explicit `unsafe` block
+        // is required even inside an `unsafe fn` since edition 2024
+        // (`unsafe_op_in_unsafe_fn`).
+        unsafe {
+            core::arch::asm!(
+                "in al, dx",
+                out("al") val,
+                in("dx") addr,
+                options(nostack, preserves_flags),
+            );
+        }
+        val
+    }
+}
+
+/// Write `val` to the I/O port `addr`.
+///
+/// Two mutually exclusive definitions instead of one function with `#[cfg]`
+/// blocks inside: the cfg-stripped body then has exactly one tail expression
+/// on every platform, so neither `needless_return` nor unreachable-code
+/// lints can fire on a target the author does not build on.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn write_port(addr: u16, val: u8) -> Result<()> {
+    // SAFETY: `grant` limits the kernel permission to the single port we are
+    // about to write, and the caller checked the address for overflow before
+    // we got here.
+    unsafe {
+        if !port_io::grant(addr) {
+            return Err(Error::Transport(format!(
+                "ioperm(0x{addr:03X}) failed — raw I/O needs CAP_SYS_RAWIO (root)"
+            )));
+        }
+        port_io::out(addr, val);
+    }
+    Ok(())
+}
+
+/// Write `val` to the I/O port `addr` — raw port I/O is unavailable here.
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+fn write_port(addr: u16, val: u8) -> Result<()> {
     let _ = (addr, val);
     Err(Error::Transport(
         "LPT backend unavailable on this platform/architecture".into(),
     ))
 }
 
+/// Read a byte from the I/O port `addr`.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn read_port(addr: u16) -> Result<u8> {
-    #[cfg(all(
-        any(target_os = "linux", target_os = "freebsd"),
-        target_arch = "x86_64"
-    ))]
-    {
-        // SAFETY: grants access to the single port address and reads it.
-        unsafe {
-            libc::ioperm(addr, 1, 1);
-            return Ok(libc::inb(addr));
+    // SAFETY: `grant` limits the kernel permission to the single port we are
+    // about to read, and the caller checked the address for overflow before
+    // we got here.
+    unsafe {
+        if !port_io::grant(addr) {
+            return Err(Error::Transport(format!(
+                "ioperm(0x{addr:03X}) failed — raw I/O needs CAP_SYS_RAWIO (root)"
+            )));
         }
+        Ok(port_io::in_byte(addr))
     }
+}
+
+/// Read a byte from the I/O port `addr` — raw port I/O is unavailable here.
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+fn read_port(addr: u16) -> Result<u8> {
     let _ = addr;
     Err(Error::Transport(
         "LPT backend unavailable on this platform/architecture".into(),

@@ -3,6 +3,7 @@ name = "kr1878-core"
 description = "KR1878VE1 core: ISA encoding/decoding, memory model, business operations"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

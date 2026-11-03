@@ -3,6 +3,7 @@ name = "kr1878-protocol"
 description = "Low-level bit-bang protocol used by the KR1878VE1 programmer"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [features]
