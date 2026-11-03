@@ -493,15 +493,24 @@ fn br_target(toks: &[Token], pc: usize, syms: &Symbols, span: Span) -> Result<u1
 }
 
 /// Which tetrad position a mnemonic selects (`l`=low, `h`=high).
+/// Recognises the bit-manipulation mnemonics `bic`/`bis`/`btg`/`btt` with an
+/// optional `l`/`h` suffix (the place of the affected tetrad).
+///
+/// The suffix alone is not enough to identify them: `push` and `shl` also end
+/// in `h`/`l`, so the base mnemonic has to be one of the four.
 fn tetrad_place(mnem: &str) -> Option<(Place, String)> {
     let lower = mnem.to_ascii_lowercase();
-    if let Some(base) = lower.strip_suffix('l') {
-        return Some((Place::Low, base.to_string()));
+    let (place, base) = if let Some(base) = lower.strip_suffix('l') {
+        (Place::Low, base)
+    } else {
+        let base = lower.strip_suffix('h')?;
+        (Place::High, base)
+    };
+    if !matches!(base, "bic" | "bis" | "btg" | "btt") {
+        return None;
     }
-    if let Some(base) = lower.strip_suffix('h') {
-        return Some((Place::High, base.to_string()));
-    }
-    None
+
+    Some((place, base.to_string()))
 }
 
 /// Encode one instruction word.
