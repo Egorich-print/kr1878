@@ -227,25 +227,27 @@
           <text x="150" y="58" text-anchor="middle" class="lb">команды</text>
           <text x="315" y="58" text-anchor="middle" class="lb">команды</text>
 
-          <text x="16" y="96" class="lg">PB0 PRG</text>
+          <text x="16" y="96" class="lg">PB0 данные</text>
           <path d="M70 130 H150 V96 H260 V130 H268 V96 H370" class="sg"/>
 
-          <text x="16" y="166" class="lg">PB1 MCT</text>
+          <text x="16" y="166" class="lg">PB1 готов</text>
           <path d="M70 140 H150 V176 H360 V140 H370" class="sg2"/>
 
-          <text x="16" y="236" class="lg">PB2 PRG</text>
+          <text x="16" y="236" class="lg">PB2 строб</text>
           <path d="M70 236 H138 V214 H152 V236 H248 V214 H262 V236 H370" class="sg"/>
 
-          <text x="382" y="104" class="lb">уровень</text>
-          <text x="382" y="180" class="lb">чип</text>
-          <text x="382" y="180" class="lb" dy="16">тянет</text>
+          <text x="384" y="100" class="lb">высокий —</text>
+          <text x="384" y="115" class="lb">запись,</text>
+          <text x="384" y="130" class="lb">низкий —</text>
+          <text x="384" y="145" class="lb">чтение</text>
+          <text x="384" y="176" class="lb">тянет чип</text>
         </svg>
       </div>
     </div>
 
     <div>
       <h2>Временная диаграмма приёма команды</h2>
-      <p class="note">Микроконтроллер сам выставляет и снимает MCT — программатор по нему понимает, что команда принята.</p>
+      <p class="note">Подтяжки на PB0/PB1/PB2 — <strong>внутри микроконтроллера</strong>: программатор только тянет линии вниз, поэтому 3,3 В внешнего модуля не конфликтуют с 5 В на чипе.</p>
       <div class="card">
         <svg viewBox="0 0 420 300" width="100%" role="img" aria-label="Временная диаграмма сигналов PRG, MCT, PRG">
           <style>
@@ -275,7 +277,7 @@
           <text x="386" y="100" class="lb">уровень</text>
         </svg>
         <div class="okbox" style="margin-top:14px">
-          <strong>Логика:</strong> PRG (PB0) идёт вверх на первой половине слова команды, MCT (PB1) опускается — микроконтроллер подтверждает приём, затем PRG приходит вниз и поднимается на второй половине.
+          <strong>Логика:</strong> после +12 В на RST программатор ждёт, пока чип тянет <strong>PB1 вниз</strong> — «готов». Данные идут по <strong>PB0</strong>: высокий уровень — запись, низкий — чтение. Каждая половина команды подтверждается фронтом на <strong>PB2</strong>. Таймаут ожидания готовности — 10 с.
         </div>
       </div>
     </div>
