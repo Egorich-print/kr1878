@@ -228,6 +228,11 @@
 * LLVM/GCC: [Adding a new target](https://llvm.org/docs/AddingANewTarget.html), gccint «Anatomy of a Target Back End», списки бэкендов `llvm/lib/Target/*` и `gcc/config/*` (размеры измерены через GitHub Contents API), moxie/ggx-серия, ARC, Cpu0, RL78.
 * Zig: релиз 0.17.0 и master (Codeberg) — `src/codegen/`, `lib/std/Target.zig`, `src/link/Spork8.zig`; измерения `zig build-exe -target spork8-freestanding` локально.
 * Rust: `rustc_target::spec` (поле `llvm_target` обязательно), `rustc_codegen_gcc` (каталог `target_specs/`), `rustc_codegen_cranelift` (только x86_64/AArch64/Riscv64/s390x); размеры `no_std` измерены локально на `thumbv6m`/`msp430`/`riscv32imac`.
+* Железо и подключение: [спецификация подключения «Ангстрема» (стр. 55-57)](https://www.radioman-portal.ru/sprav/microcontrollers/kr1878ve1/sp.pdf),
+  [кодирование ЭСППЗУ (стр. 58-62)](https://www.radioman-portal.ru/sprav/microcontrollers/kr1878ve1/acppzy.pdf),
+  [даташит КР1878ВЕ1](https://www.radioman-portal.ru/sprav/microcontrollers/kr1878ve1/1878ve1.pdf),
+  [TESSA 0.1 (стр. 63-78)](https://www.radioman-portal.ru/sprav/microcontrollers/kr1878ve1/assembler-2.pdf);
+  сводка распиновки и подключения — `docs/HARDWARE-WIRING.md`.
 * Проекты: Goose (aardappel/goose) — `GS_STACK_RESERVE`; Lua 4.0 (ltn002.html); femtolisp, PicoLisp, s7, tinylisp, SectorLISP; Uxn (байткод-VM).
 * Учебная модель КР1878ВЕ1: Жмакин, Селиванов, «О разработке программных моделей микроконтроллеров» (cyberleninka) — ассемблер, загрузчик и отладчик с точками останова; прецедент для дизайна IDE.
 * Прецедент IDE для похожего класса МК: CM-LYNX ПКК «Миландр» (Eclipse, свой тулчейн C/C++, симулятор, аппаратный отладчик).

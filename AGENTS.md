@@ -80,6 +80,7 @@ inline-ассемблером `out dx, al` / `in al, dx` (см. `port_io` в
 | `scripts/gate.sh` | родной гейт репозитория |
 | `docs/TOOLCHAIN_OPTIONS.md` | варианты компиляции под ТЕСЕЙ (C/C++/Zig/Rust/Goose/Lua/Lisp), IDE и API |
 | `docs/adr/` | принятые решения (ABI компилятора, формат образа, …) |
+| `docs/HARDWARE-WIRING.md` | распиновка КР1878ВЕ1 и подключение к программатору |
 | `docs/` | архитектура, форматы файлов, протокол железа, ISA |
 
 ## Компилятор C
